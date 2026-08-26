@@ -158,7 +158,7 @@ function queryBigQueryData(queryDate) {
       maxResults: 1000
     };
 
-    const queryResults = BigQuery.Projects.Queries.query(request, PROJECT_ID);
+    const queryResults = BigQuery.Projects.Queries.query(request, PROJECT_ID, {});
 
     if (!queryResults.rows || queryResults.rows.length === 0) {
       Logger.log('⚠️ No data found for date: ' + dateStr);
