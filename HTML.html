@@ -3,23 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Talabat Qatar — Shift Planning Dashboard</title>
+  <title>Talabat Mart — Hybrid Rider Shift Dashboard</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
     :root {
-      --bg:#0d1117; --surface:#161b22; --surface2:#1c2330;
-      --border:#2a3441; --border2:#3a4758;
-      --text:#e6edf3; --text2:#8b949e; --text3:#4d5966;
-      --s1:#388bfd; --s1-dim:#1a3a6e; --s1-bg:#0d2044;
-      --s2:#f0883e; --s2-dim:#5a3010;
-      --s3:#bc8cff; --s3-dim:#3a1e6e;
-      --ov:#3fb950; --ov-dim:#1a4a2a;
-      --unc:#f85149; --eve:#d29922; --eve-bg:#2d2000;
-      --bal:#58a6ff; --std:#3fb950;
-      --stk:#e879f9;
+      --bg:#0f172a; --surface:#1e293b; --surface2:#334155;
+      --border:#475569; --border2:#64748b;
+      --text:#f1f5f9; --text2:#cbd5e1; --text3:#94a3b8;
+      --s1:#0ea5e9; --s1-dim:#082f49; --s1-bg:#0c2340;
+      --s2:#f97316; --s2-dim:#7c2d12;
+      --s3:#8b5cf6; --s3-dim:#4c1d95;
+      --ov:#10b981; --ov-dim:#064e3b;
+      --unc:#ef4444; --eve:#eab308; --eve-bg:#423f04;
+      --bal:#06b6d4; --std:#10b981;
+      --stk:#ec4899;
       --r:8px; --rl:12px;
+      --mart:#10b981;
+      --mart-dim:#065f46;
+      --mart-bg:#051e2a;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -408,6 +411,15 @@
       background: var(--border2);
       border-radius: 2px;
     }
+
+    input[type="date"] {
+      color-scheme: dark;
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(1) brightness(1.2);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -416,22 +428,26 @@
     <aside class="sidebar">
       <div class="sb-hdr">
         <div class="logo">
-          <div class="logo-dot">T</div>
+          <div class="logo-dot" style="background: linear-gradient(135deg, #10b981, #059669);">🛒</div>
           <div>
-            <div class="logo-text">Shift Planner</div>
-            <div class="logo-sub">talabat · qatar ops</div>
+            <div class="logo-text">Hybrid Shift Planner</div>
+            <div class="logo-sub">talabat mart · qa</div>
           </div>
         </div>
       </div>
 
-      <!-- Upload -->
+      <!-- Date Picker -->
       <div class="sb-sec">
-        <div class="sb-lbl">Data Source</div>
-        <div class="upzone" id="upzone" onclick="document.getElementById('file-input').click()">
-          <div style="font-size:16px;margin-bottom:2px">⬆</div>
-          <div class="up-txt"><strong id="file-name">Upload CSV</strong><br>Click or drag &amp; drop</div>
+        <div class="sb-lbl">Query Date</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input type="date" id="query-date" style="flex:1;padding:6px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:11px">
+          <button onclick="loadDataForDate()" style="padding:6px 12px;border-radius:5px;border:1px solid var(--mart);background:var(--mart-dim);color:var(--mart);font-weight:600;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">Load</button>
         </div>
-        <input type="file" id="file-input" accept=".csv">
+        <div style="display:flex;gap:4px">
+          <button onclick="loadToday()" style="flex:1;padding:4px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">Today</button>
+          <button onclick="loadYesterday()" style="flex:1;padding:4px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">Yesterday</button>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.4">Loading from BigQuery: Hybrid riders · Talabat Mart · QA region</div>
       </div>
 
       <!-- Order % filter -->
@@ -503,8 +519,8 @@
     <main class="main">
       <div class="pg-hdr">
         <div>
-          <div class="pg-title">Branch Shift Planning</div>
-          <div class="pg-sub">Demand coverage · Rider allocation · Hourly UTR</div>
+          <div class="pg-title">🛒 Talabat Mart Hybrid Riders</div>
+          <div class="pg-sub" id="page-sub">Shift planning · Coverage analysis · Hybrid performance</div>
         </div>
       </div>
 
@@ -595,10 +611,44 @@
     document.addEventListener('DOMContentLoaded', init);
 
     function init() {
+      // Set date picker to today
+      const today = new Date();
+      document.getElementById('query-date').valueAsDate = today;
+
       buildTimeSelects();
       loadInitialData();
       setupEventListeners();
       render();
+    }
+
+    function loadToday() {
+      const today = new Date();
+      document.getElementById('query-date').valueAsDate = today;
+      loadDataForDate();
+    }
+
+    function loadYesterday() {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      document.getElementById('query-date').valueAsDate = yesterday;
+      loadDataForDate();
+    }
+
+    function loadDataForDate() {
+      const dateInput = document.getElementById('query-date').value;
+      if (!dateInput) {
+        alert('Please select a date');
+        return;
+      }
+
+      const dateStr = new Date(dateInput).toISOString().split('T')[0];
+      document.getElementById('page-sub').textContent = 'Loading data for ' + dateStr + '...';
+
+      google.script.run.withSuccessHandler(data => {
+        branches = data.branches || [];
+        document.getElementById('page-sub').textContent = 'Date: ' + data.queryDate + ' · ' + branches.length + ' branches';
+        render();
+      }).getInitialData(dateStr);
     }
 
     function buildTimeSelects() {
@@ -632,10 +682,13 @@
     }
 
     function loadInitialData() {
+      // Load today's data by default
+      const today = new Date().toISOString().split('T')[0];
       google.script.run.withSuccessHandler(data => {
         branches = data.branches || [];
+        document.getElementById('page-sub').textContent = 'Date: ' + data.queryDate + ' · ' + branches.length + ' branches';
         render();
-      }).getInitialData();
+      }).getInitialData(today);
     }
 
     function setupEventListeners() {
