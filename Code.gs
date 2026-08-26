@@ -280,3 +280,59 @@ function processCSV(csvData) {
 
   return branches;
 }
+
+// ============================================================================
+// GOOGLE SHEETS AUTO-UPDATE
+// ============================================================================
+
+function generateCSVFromSheet() {
+  try {
+    // Open the Google Sheet with branch data
+    const spreadsheet = SpreadsheetApp.openById('1EIU9d8p1HMxoWs0U9Y1W708QdUm5vhaVXE2mQEJ9Dds');
+
+    // Get the first sheet (you can change the index or name)
+    const sheet = spreadsheet.getSheets()[0];
+    const data = sheet.getDataRange().getValues();
+
+    if (data.length < 2) {
+      Logger.log('Sheet is empty');
+      return null;
+    }
+
+    // Convert to CSV format (expecting: Branch Name, Riders, Daily Avg Orders)
+    let csv = 'Branch Name,Riders,Daily Avg Orders\n';
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] && data[i][1] && data[i][2]) {
+        csv += `${data[i][0]},${data[i][1]},${data[i][2]}\n`;
+      }
+    }
+
+    Logger.log('Generated CSV from sheet');
+    return csv;
+  } catch (error) {
+    Logger.log('Error reading sheet: ' + error);
+    return null;
+  }
+}
+
+function autoUpdateFromSource() {
+  try {
+    const csvData = generateCSVFromSheet();
+
+    if (!csvData) {
+      Logger.log('No CSV data generated');
+      return;
+    }
+
+    const branches = processCSV(csvData);
+
+    if (branches && branches.length > 0) {
+      Logger.log('✅ Updated ' + branches.length + ' branches from Google Sheet');
+      return branches;
+    } else {
+      Logger.log('No branches processed');
+    }
+  } catch (error) {
+    Logger.log('Error in autoUpdateFromSource: ' + error);
+  }
+}
