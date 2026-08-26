@@ -1,9 +1,38 @@
 // ============================================================================
-// TALABAT SHIFT PLANNING DASHBOARD - GOOGLE APPS SCRIPT (FULLY AUTOMATED)
+// TALABAT MART SHIFT PLANNING DASHBOARD - GOOGLE APPS SCRIPT
 // ============================================================================
 
-// Google Sheet Configuration
-const SHEET_ID = '1EIU9d8p1HMxoWs0U9Y1W708QdUm5vhaVXE2mQEJ9Dds';
+// BigQuery Configuration
+const PROJECT_ID = 'tlb-data-prod';
+const BIGQUERY_QUERY = `
+SELECT
+  DATE(fct_logistics_order.created_date) as order_date,
+  EXTRACT(HOUR FROM fct_logistics_order.created_date) as hour,
+  dim_logistics_vendor.vendor_name as branch_name,
+  COUNT(DISTINCT fct_logistics_order.order_code) as orders_count,
+  COUNT(DISTINCT CASE WHEN fct_logistics_order.order_status = 'completed' THEN fct_logistics_order.order_code END) as successful_orders,
+  AVG(fct_logistics_order.primary_dropoff_distance_manhattan / 1000) as avg_distance_km,
+  SAFE_DIVIDE(
+    COUNT(DISTINCT CASE WHEN fct_logistics_order.primary_stacked_count > 0 THEN fct_logistics_order.order_code END),
+    COUNT(DISTINCT fct_logistics_order.order_code)
+  ) as stacking_rate,
+  COUNT(DISTINCT CASE WHEN fct_logistics_order.succesful_deliveries_count > 0 THEN fct_logistics_order.primary_rider_id ELSE NULL END) as active_riders
+FROM \`tlb-data-prod.data_platform.fct_logistics_order\` as fct_logistics_order
+LEFT JOIN \`tlb-data-prod.data_platform.dim_logistics_vendor\` as dim_logistics_vendor
+  ON fct_logistics_order.country_code = dim_logistics_vendor.country_code
+  AND fct_logistics_order.city_id = dim_logistics_vendor.city_id
+  AND fct_logistics_order.vendor_code = dim_logistics_vendor.vendor_code
+LEFT JOIN \`tlb-data-prod.data_platform.dim_logistics_rider\` as dim_logistics_rider
+  ON fct_logistics_order.primary_rider_id = dim_logistics_rider.rider_id
+WHERE UPPER(fct_logistics_order.country_code) = 'QA'
+  AND fct_logistics_order.is_rider_order = TRUE
+  AND fct_logistics_order.is_talabat = TRUE
+  AND fct_logistics_order.order_status = 'completed'
+  AND DATE(fct_logistics_order.created_date) = @query_date
+  AND UPPER(dim_logistics_rider.last_contract_name) LIKE '%HYBRID%'
+GROUP BY order_date, hour, branch_name
+ORDER BY branch_name, hour
+`;
 
 // ============================================================================
 // SERVE THE HTML UI
@@ -109,128 +138,162 @@ function calculateUTRPerHour(branch, config) {
 }
 
 // ============================================================================
-// GOOGLE SHEETS AUTO-UPDATE - FULLY AUTOMATED
+// BIGQUERY DATA FETCH - TALABAT MART HYBRID RIDERS
 // ============================================================================
 
-function generateCSVFromSheet() {
+function queryBigQueryData(queryDate) {
   try {
-    const spreadsheet = SpreadsheetApp.openById(SHEET_ID);
-    const sheet = spreadsheet.getSheets()[0];
-    const data = sheet.getDataRange().getValues();
+    const dateStr = queryDate ? Utilities.formatDate(new Date(queryDate), 'UTC', 'yyyy-MM-dd') : Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd');
 
-    if (data.length < 2) {
-      Logger.log('❌ Sheet is empty');
+    const request = {
+      query: BIGQUERY_QUERY,
+      useLegacySql: false,
+      queryParameters: [
+        {
+          name: 'query_date',
+          parameterType: { type: 'DATE' },
+          parameterValue: { value: dateStr }
+        }
+      ],
+      maxResults: 1000
+    };
+
+    const queryResults = BigQuery.Projects.Queries.query(request, PROJECT_ID);
+
+    if (!queryResults.rows || queryResults.rows.length === 0) {
+      Logger.log('⚠️ No data found for date: ' + dateStr);
       return null;
     }
 
-    // Convert to CSV format (expecting: Branch Name, Riders, Daily Avg Orders)
-    let csv = 'Branch Name,Riders,Daily Avg Orders\n';
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] && data[i][1] && data[i][2]) {
-        csv += `${data[i][0]},${data[i][1]},${data[i][2]}\n`;
-      }
-    }
-
-    Logger.log('✅ Generated CSV from sheet: ' + (data.length - 1) + ' rows');
-    return csv;
+    Logger.log('✅ BigQuery returned ' + queryResults.rows.length + ' rows for ' + dateStr);
+    return queryResults.rows;
   } catch (error) {
-    Logger.log('❌ Error reading sheet: ' + error);
+    Logger.log('❌ BigQuery error: ' + error);
     return null;
   }
 }
 
-function autoUpdateFromSource() {
+function transformBigQueryToBranches(rows) {
   try {
-    const csvData = generateCSVFromSheet();
+    if (!rows || rows.length === 0) return [];
 
-    if (!csvData) {
-      Logger.log('❌ No CSV data generated');
+    const branchMap = {};
+
+    // Group data by branch
+    rows.forEach(row => {
+      const f = row.f;
+      const branchName = f[2].v;
+      const hour = parseInt(f[1].v);
+      const ordersCount = parseInt(f[3].v) || 0;
+      const successfulOrders = parseInt(f[4].v) || 0;
+      const avgDistance = parseFloat(f[5].v) || 3.5;
+      const stackingRate = parseFloat(f[6].v) || 0;
+      const activeRiders = parseInt(f[7].v) || 1;
+
+      if (!branchMap[branchName]) {
+        branchMap[branchName] = {
+          name: branchName,
+          riders: 0,
+          orders: Array(24).fill(0),
+          utr: Array(24).fill(0),
+          dist: Array(24).fill(3.5),
+          stk: Array(24).fill(0),
+          pct: Array(24).fill(0),
+          hourlyRiders: Array(24).fill(0)
+        };
+      }
+
+      // Fill hourly data
+      branchMap[branchName].orders[hour] = successfulOrders;
+      branchMap[branchName].dist[hour] = avgDistance;
+      branchMap[branchName].stk[hour] = stackingRate;
+      branchMap[branchName].hourlyRiders[hour] = activeRiders;
+
+      // Calculate UTR
+      if (activeRiders > 0) {
+        branchMap[branchName].utr[hour] = parseFloat((successfulOrders / activeRiders).toFixed(2));
+      }
+    });
+
+    // Calculate peak riders and convert to branches array
+    const branches = Object.values(branchMap).map(branch => {
+      const maxRiders = Math.max(...branch.hourlyRiders.filter(r => r > 0));
+      branch.riders = maxRiders || 10;
+
+      // Calculate order percentages
+      const totalOrders = branch.orders.reduce((a, b) => a + b, 0) || 1;
+      branch.pct = branch.orders.map(o => (o / totalOrders) * 100);
+
+      delete branch.hourlyRiders;
+      return branch;
+    });
+
+    return branches;
+  } catch (error) {
+    Logger.log('❌ Transform error: ' + error);
+    return [];
+  }
+}
+
+function autoUpdateFromBigQuery(queryDate) {
+  try {
+    const rows = queryBigQueryData(queryDate);
+    if (!rows) {
+      Logger.log('❌ No rows from BigQuery');
       return null;
     }
 
-    const branches = processCSV(csvData);
-
+    const branches = transformBigQueryToBranches(rows);
     if (branches && branches.length > 0) {
-      Logger.log('✅ Updated ' + branches.length + ' branches from Google Sheet');
-      saveBranchesToCache(branches);
+      Logger.log('✅ Updated ' + branches.length + ' Talabat Mart branches (Hybrid)');
+      saveBranchesToCache(branches, queryDate);
       return branches;
     } else {
       Logger.log('❌ No branches processed');
     }
   } catch (error) {
-    Logger.log('❌ Error in autoUpdateFromSource: ' + error);
+    Logger.log('❌ Error in autoUpdateFromBigQuery: ' + error);
   }
 }
 
 // ============================================================================
-// CSV PROCESSING
+// CACHE MANAGEMENT (DATE-AWARE)
 // ============================================================================
 
-function processCSV(csvData) {
-  const rows = csvData.split('\n').filter(row => row.trim());
-  if (rows.length < 2) return null;
-
-  const branches = [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const cells = rows[i].split(',').map(c => c.trim());
-    if (cells.length < 3) continue;
-
-    const branchName = cells[0];
-    const riders = parseInt(cells[1]) || 10;
-    const dailyOrders = parseFloat(cells[2]) || 100;
-
-    const branch = {
-      name: branchName,
-      riders,
-      orders: Array(24).fill(dailyOrders / 24),
-      utr: Array(24).fill(null),
-      dist: Array(24).fill(3.5),
-      stk: Array(24).fill(0.05),
-      pct: Array(24).fill((dailyOrders / 24) / riders)
-    };
-
-    branches.push(branch);
-  }
-
-  return branches;
+function saveBranchesToCache(branches, queryDate) {
+  const cache = CacheService.getScriptCache();
+  const dateStr = queryDate ? Utilities.formatDate(new Date(queryDate), 'UTC', 'yyyy-MM-dd') : Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd');
+  const cacheKey = 'branches_' + dateStr;
+  cache.put(cacheKey, JSON.stringify({ date: dateStr, data: branches }), 3600); // 1 hour
+  Logger.log('💾 Cached ' + branches.length + ' branches for ' + dateStr);
 }
 
-// ============================================================================
-// CACHE MANAGEMENT
-// ============================================================================
-
-function saveBranchesToCache(branches) {
+function getBranchesFromCache(queryDate) {
   const cache = CacheService.getScriptCache();
-  cache.put('branches', JSON.stringify(branches), 3600); // 1 hour
-}
-
-function getBranchesFromCache() {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get('branches');
+  const dateStr = queryDate ? Utilities.formatDate(new Date(queryDate), 'UTC', 'yyyy-MM-dd') : Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd');
+  const cacheKey = 'branches_' + dateStr;
+  const cached = cache.get(cacheKey);
   if (cached) {
-    return JSON.parse(cached);
+    Logger.log('📦 Using cached data for ' + dateStr);
+    return JSON.parse(cached).data;
   }
   return null;
 }
 
 // ============================================================================
-// DATA FOR CLIENT (PULLS FROM GOOGLE SHEET)
+// DATA FOR CLIENT (PULLS FROM BIGQUERY)
 // ============================================================================
 
-function getInitialData() {
-  // Try cache first
-  let branches = getBranchesFromCache();
+function getInitialData(queryDate) {
+  Logger.log('🔄 Loading data for date: ' + (queryDate || 'today'));
 
-  // If no cache, pull from sheet
+  // Try cache first
+  let branches = getBranchesFromCache(queryDate);
+
+  // If no cache, pull from BigQuery
   if (!branches) {
-    const csvData = generateCSVFromSheet();
-    if (csvData) {
-      branches = processCSV(csvData);
-      if (branches && branches.length > 0) {
-        saveBranchesToCache(branches);
-      }
-    }
+    Logger.log('📡 Fetching from BigQuery...');
+    branches = autoUpdateFromBigQuery(queryDate);
   }
 
   // Fallback to empty array if still nothing
@@ -238,8 +301,11 @@ function getInitialData() {
     branches = [];
   }
 
+  const dateStr = queryDate ? Utilities.formatDate(new Date(queryDate), 'UTC', 'yyyy-MM-dd') : Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd');
+
   return {
     branches: branches,
+    queryDate: dateStr,
     defaultShifts: [
       { start: 9, end: 19 },
       { start: 14, end: 24 },
@@ -253,7 +319,24 @@ function getInitialData() {
 // SCHEDULED UPDATE HELPER
 // ============================================================================
 
-function testUpdate() {
-  Logger.log('Testing auto-update...');
-  autoUpdateFromSource();
+function testUpdateToday() {
+  Logger.log('🧪 Testing BigQuery update for TODAY...');
+  const result = autoUpdateFromBigQuery(new Date());
+  if (result && result.length > 0) {
+    Logger.log('✅ Success: ' + result.length + ' Talabat Mart branches loaded');
+  } else {
+    Logger.log('❌ Failed or no data');
+  }
+}
+
+function testUpdateYesterday() {
+  Logger.log('🧪 Testing BigQuery update for YESTERDAY...');
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const result = autoUpdateFromBigQuery(yesterday);
+  if (result && result.length > 0) {
+    Logger.log('✅ Success: ' + result.length + ' Talabat Mart branches loaded');
+  } else {
+    Logger.log('❌ Failed or no data');
+  }
 }
