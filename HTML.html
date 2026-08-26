@@ -510,7 +510,8 @@
         <div style="font-size:10px;color:var(--text3);line-height:1.5;margin-top:6px">Reduces effective riders per shift.</div>
       </div>
 
-      <div style="margin-top:auto">
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+        <button class="reset-btn" onclick="exportConfiguration()" style="background:var(--mart-dim);border-color:var(--mart);color:var(--mart)">📥 Export Config</button>
         <button class="reset-btn" onclick="doReset()">↺ Reset to defaults</button>
       </div>
     </aside>
@@ -977,6 +978,56 @@
           }
         }
       });
+    }
+
+    function fmtH(h) {
+      h = ((h % 24) + 24) % 24;
+      const ap = h < 12 ? 'AM' : 'PM';
+      const d = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      return `${d}:00 ${ap}`;
+    }
+
+    function exportConfiguration() {
+      try {
+        let csv = 'Branch,Shift,Start,End,Riders\n';
+
+        branches.forEach(branch => {
+          const riders = splitRiders(branch);
+
+          if (config.nShifts >= 1) {
+            csv += `${branch.name},1,${fmtH(config.shifts[0].start)},${fmtH(config.shifts[0].end)},${riders.r1}\n`;
+          }
+          if (config.nShifts >= 2) {
+            csv += `${branch.name},2,${fmtH(config.shifts[1].start)},${fmtH(config.shifts[1].end)},${riders.r2}\n`;
+          }
+          if (config.nShifts >= 3) {
+            csv += `${branch.name},3,${fmtH(config.shifts[2].start)},${fmtH(config.shifts[2].end)},${riders.r3}\n`;
+          }
+        });
+
+        // Add summary info as comments
+        csv += '\n# Export Info\n';
+        csv += `# Generated: ${new Date().toISOString()}\n`;
+        csv += `# Order Volume: ${config.orderPct}%\n`;
+        csv += `# No-show Rate: ${config.noShowPct}%\n`;
+        csv += `# Total Branches: ${branches.length}\n`;
+        csv += `# Total Shifts: ${config.nShifts}\n`;
+
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `talabat-mart-config-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        alert('✅ Configuration exported successfully!');
+      } catch (error) {
+        alert('❌ Export failed: ' + error);
+      }
     }
 
     function doReset() {
