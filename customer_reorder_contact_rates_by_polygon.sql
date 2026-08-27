@@ -1,3 +1,18 @@
+-- Re-order rate and customer support contact rate for orders picked up
+-- inside vs. outside a given polygon, over a defined time range.
+--
+-- Definitions:
+--   * Segment (Inside / Outside): based on the delivery's PICKUP location
+--     falling inside the polygon (dropoff is required to be inside the
+--     polygon for all rows, matching the original filter logic).
+--   * Re-order rate: % of unique customers (analytical_customer_id) who
+--     placed more than one completed rider order in the period, within
+--     that segment.
+--   * Customer contact rate: % of orders where the CUSTOMER (not rider/
+--     vendor) raised a support contact (fct_contact.stakeholder_id = 1),
+--     matched by order_id, allowing contacts up to 7 days after the
+--     period ends (customers often contact support after delivery).
+
 WITH polygon AS (
   SELECT ST_GEOGFROMGEOJSON("""
 {
@@ -37,12 +52,11 @@ WITH polygon AS (
 """) AS geom
 ),
 
--- Get all customer orders with polygon categorization
-customer_orders AS (
+-- All completed rider orders in the period, tagged Inside/Outside by pickup location
+base AS (
   SELECT
-    fct_order_info.customer_analytical_id,
     fct_logistics_order.order_id,
-    fct_logistics_order.created_date,
+    fct_order_info.analytical_customer_id,
     CASE
       WHEN fct_logistics_delivery.pickup_location_latitude IS NULL
         OR fct_logistics_delivery.pickup_location_longitude IS NULL THEN NULL
@@ -50,87 +64,74 @@ customer_orders AS (
         fct_logistics_delivery.pickup_location_longitude,
         fct_logistics_delivery.pickup_location_latitude)) THEN 'Inside'
       ELSE 'Outside'
-    END AS pickup_polygon_check,
-    fct_logistics_delivery.delivery_status,
-    fct_logistics_delivery.is_returning,
-    fct_logistics_delivery.at_customer_time,
-    fct_logistics_delivery.to_customer_time,
-    CASE
-      WHEN fct_logistics_order.created_date >= DATE('2026-07-01')
-        AND fct_logistics_order.created_date < DATE_ADD(DATE('2026-08-23'), INTERVAL 1 MONTH)
-      THEN 1
-      ELSE 0
-    END AS in_analysis_period,
-    ROW_NUMBER() OVER (
-      PARTITION BY fct_order_info.customer_analytical_id,
-        CASE
-          WHEN fct_logistics_delivery.pickup_location_latitude IS NULL
-            OR fct_logistics_delivery.pickup_location_longitude IS NULL THEN NULL
-          WHEN ST_CONTAINS(p.geom, ST_GEOGPOINT(
-            fct_logistics_delivery.pickup_location_longitude,
-            fct_logistics_delivery.pickup_location_latitude)) THEN 'Inside'
-          ELSE 'Outside'
-        END
-      ORDER BY fct_logistics_order.created_date
-    ) AS order_sequence
+    END AS pickup_polygon_check
   FROM `tlb-data-prod.data_platform.fct_logistics_order` AS fct_logistics_order
   LEFT JOIN `tlb-data-prod.data_platform.fct_order_info` AS fct_order_info
     ON fct_logistics_order.order_id = fct_order_info.order_id
     AND fct_logistics_order.is_talabat
+    AND fct_order_info.order_date >= DATE('2026-07-01')
+    AND fct_order_info.order_date < DATE_ADD(DATE('2026-08-23'), INTERVAL 1 MONTH)
   LEFT JOIN `tlb-data-prod.data_platform.fct_logistics_delivery` AS fct_logistics_delivery
     ON fct_logistics_order.country_code = fct_logistics_delivery.country_code
     AND fct_logistics_order.order_code = fct_logistics_delivery.order_code
+    AND fct_logistics_delivery.created_date >= DATE('2026-07-01')
+    AND fct_logistics_delivery.created_date < DATE_ADD(DATE('2026-08-23'), INTERVAL 1 MONTH)
   CROSS JOIN polygon p
   WHERE upper(fct_logistics_order.country_code) LIKE 'QA'
+    AND fct_logistics_order.created_date >= DATE('2026-07-01')
+    AND fct_logistics_order.created_date < DATE_ADD(DATE('2026-08-23'), INTERVAL 1 MONTH)
     AND fct_logistics_order.is_rider_order
     AND upper(fct_logistics_delivery.delivery_status) = 'COMPLETED'
     AND (fct_logistics_delivery.sp_id NOT IN (21108, 21089, 21100) OR fct_logistics_delivery.sp_id IS NULL)
-    AND fct_logistics_order.created_date >= DATE_TRUNC(DATE_ADD(CURRENT_DATE(), INTERVAL -23 MONTH), MONTH)
     AND fct_logistics_delivery.dropoff_location_latitude IS NOT NULL
     AND ST_CONTAINS(
       p.geom,
       ST_GEOGPOINT(fct_logistics_delivery.dropoff_location_longitude, fct_logistics_delivery.dropoff_location_latitude)
     )
+    AND fct_order_info.analytical_customer_id IS NOT NULL
 ),
 
--- Calculate metrics by customer and polygon location
-customer_polygon_metrics AS (
+-- Flag each order for whether the customer (stakeholder_id = 1) raised a support contact
+base_with_contact AS (
   SELECT
-    customer_analytical_id,
+    base.order_id,
+    base.analytical_customer_id,
+    base.pickup_polygon_check,
+    MAX(CASE WHEN fct_contact.stakeholder_id = 1 THEN 1 ELSE 0 END) AS was_contacted_by_customer
+  FROM base
+  LEFT JOIN `tlb-data-prod.data_platform.fct_contact` AS fct_contact
+    ON CAST(base.order_id AS STRING) = fct_contact.order_id
+    AND fct_contact.contact_date_utc >= DATE('2026-07-01')
+    AND fct_contact.contact_date_utc < DATE_ADD(DATE_ADD(DATE('2026-08-23'), INTERVAL 1 MONTH), INTERVAL 7 DAY)
+  WHERE base.pickup_polygon_check IS NOT NULL
+  GROUP BY base.order_id, base.analytical_customer_id, base.pickup_polygon_check
+),
+
+-- Per-customer, per-segment order counts and contact counts
+customer_agg AS (
+  SELECT
+    analytical_customer_id,
     pickup_polygon_check,
-    COUNT(DISTINCT CASE WHEN in_analysis_period = 1 THEN order_id END) AS orders_in_period,
-    COUNT(DISTINCT order_id) AS total_orders_in_history,
-    COUNT(DISTINCT CASE WHEN is_returning = TRUE THEN order_id END) AS returning_orders,
-    ROUND(
-      COUNT(DISTINCT CASE WHEN is_returning = TRUE THEN order_id END) * 100.0 /
-      NULLIF(COUNT(DISTINCT order_id), 0),
-      2
-    ) AS reorder_rate_pct,
-    ROUND(AVG(at_customer_time / 60), 2) AS avg_at_customer_time_minutes,
-    ROUND(AVG(to_customer_time / 60), 2) AS avg_to_customer_time_minutes,
-    COUNT(DISTINCT CASE WHEN at_customer_time > 0 THEN order_id END) AS orders_with_customer_contact,
-    ROUND(
-      COUNT(DISTINCT CASE WHEN at_customer_time > 0 THEN order_id END) * 100.0 /
-      NULLIF(COUNT(DISTINCT order_id), 0),
-      2
-    ) AS customer_contact_rate_pct
-  FROM customer_orders
-  WHERE order_sequence > 1 OR in_analysis_period = 1
-  GROUP BY customer_analytical_id, pickup_polygon_check
+    COUNT(DISTINCT order_id) AS orders_count,
+    SUM(was_contacted_by_customer) AS contacted_orders
+  FROM base_with_contact
+  GROUP BY analytical_customer_id, pickup_polygon_check
 )
 
--- Final aggregation by polygon location
+-- Final: re-order rate and customer contact rate by polygon segment
 SELECT
   pickup_polygon_check,
-  COUNT(DISTINCT customer_analytical_id) AS unique_customers,
-  SUM(orders_in_period) AS total_orders_in_period,
-  SUM(total_orders_in_history) AS total_orders_in_history,
-  SUM(returning_orders) AS total_returning_orders,
-  ROUND(AVG(reorder_rate_pct), 2) AS avg_reorder_rate_pct,
-  ROUND(AVG(customer_contact_rate_pct), 2) AS avg_customer_contact_rate_pct,
-  ROUND(AVG(avg_at_customer_time_minutes), 2) AS avg_at_customer_time_minutes,
-  ROUND(AVG(avg_to_customer_time_minutes), 2) AS avg_to_customer_time_minutes
-FROM customer_polygon_metrics
-WHERE pickup_polygon_check IS NOT NULL
+  COUNT(DISTINCT analytical_customer_id) AS unique_customers,
+  SUM(orders_count) AS total_orders,
+  COUNT(DISTINCT CASE WHEN orders_count > 1 THEN analytical_customer_id END) AS repeat_customers,
+  ROUND(
+    COUNT(DISTINCT CASE WHEN orders_count > 1 THEN analytical_customer_id END) * 100.0 /
+    NULLIF(COUNT(DISTINCT analytical_customer_id), 0), 2
+  ) AS reorder_rate_pct,
+  SUM(contacted_orders) AS total_contacted_orders,
+  ROUND(
+    SUM(contacted_orders) * 100.0 / NULLIF(SUM(orders_count), 0), 2
+  ) AS customer_contact_rate_pct
+FROM customer_agg
 GROUP BY pickup_polygon_check
 ORDER BY pickup_polygon_check DESC;
