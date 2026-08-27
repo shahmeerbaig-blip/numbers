@@ -383,10 +383,16 @@
     </div>
 
     <script>
-        // Load data (will be injected via Python script)
-        // Placeholder - actual data gets embedded
+        // Google Apps Script URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/a/macros/talabat.com/s/AKfycbwSBK7W8JBxDFkA7rgLh28CLa_F-gLi9PSmWRZd49u25HohFZqA0FZpksgr0e_6QRM6/exec';
 
-        const existingStores = {
+        let existingStores = {};
+        let newStores = {};
+        let deliveryLocations = [];
+        let dataLoaded = false;
+
+        // Fallback data in case script fails
+        const fallbackExistingStores = {
             'Talabat Mart , Old Al Rayyan': {lat: 25.299598429156585, lng: 51.44097128130225, radius: 5.0},
             'talabat mart, Abu Hamour': {lat: 25.2331698397692, lng: 51.48532120185243, radius: 6.0},
             'Talabat Mart, Al Khor': {lat: 25.66607733518371, lng: 51.48818130046386, radius: 11.0},
@@ -397,7 +403,7 @@
             'Talabat Mart, The Pearl': {lat: 25.169, lng: 51.533, radius: 8.0}
         };
 
-        const newStores = {
+        const fallbackNewStores = {
             'Al-Manara Store': {lat: 25.34, lng: 51.48},
             'West Bay Store': {lat: 25.307, lng: 51.512},
             'Umm Ghuwailina Store': {lat: 25.252, lng: 51.497},
@@ -407,7 +413,7 @@
             'Mesaieed Store': {lat: 25.037, lng: 51.542}
         };
 
-        const deliveryLocations = [
+        const fallbackDeliveryLocations = [
             {lat: 25.28, lng: 51.51, orders: 480},
             {lat: 25.32, lng: 51.49, orders: 320},
             {lat: 25.31, lng: 51.53, orders: 280},
@@ -419,6 +425,47 @@
             {lat: 25.30, lng: 51.48, orders: 190},
             {lat: 25.25, lng: 51.50, orders: 160}
         ];
+
+        // Fetch data from Google Apps Script
+        async function loadDataFromScript() {
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL);
+                const data = await response.json();
+
+                if (data.existingStores) {
+                    existingStores = data.existingStores;
+                } else {
+                    existingStores = fallbackExistingStores;
+                }
+
+                if (data.newStores) {
+                    newStores = data.newStores;
+                } else {
+                    newStores = fallbackNewStores;
+                }
+
+                if (data.deliveryLocations) {
+                    deliveryLocations = data.deliveryLocations;
+                } else {
+                    deliveryLocations = fallbackDeliveryLocations;
+                }
+
+                dataLoaded = true;
+                console.log('Data loaded from Google Script');
+                initMap();
+            } catch (error) {
+                console.error('Error loading from Google Script:', error);
+                console.log('Using fallback data');
+                existingStores = fallbackExistingStores;
+                newStores = fallbackNewStores;
+                deliveryLocations = fallbackDeliveryLocations;
+                dataLoaded = true;
+                initMap();
+            }
+        }
+
+        // Load data on page load
+        loadDataFromScript();
 
         let map;
         let radiusCircles = [];
@@ -695,13 +742,16 @@
         });
 
         function initMap() {
-            map = L.map('map').setView([25.35, 51.50], 10);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© CartoDB',
-            maxZoom: 19
-        }).addTo(map);
+            if (!map) {
+                map = L.map('map').setView([25.35, 51.50], 10);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© CartoDB',
+                maxZoom: 19
+            }).addTo(map);
+            }
 
             const storesDiv = document.getElementById('newStores');
+            storesDiv.innerHTML = '';
             Object.keys(newStores).sort().forEach(name => {
                 const btn = document.createElement('button');
                 btn.className = 'btn';
@@ -713,8 +763,6 @@
 
             updateMap();
         }
-
-        initMap();
     </script>
 </body>
 </html>
