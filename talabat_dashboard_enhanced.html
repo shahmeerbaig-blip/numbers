@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid Fleet Expansion | Talabat</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #F8F7F4;
+            color: #1A1A1A;
+            height: 100vh;
+        }
+        .container { display: grid; grid-template-columns: 340px 1fr 420px; height: 100vh; }
+
+        /* Left Sidebar */
+        .sidebar {
+            background: #FFFFFF;
+            border-right: 1px solid #E5E0DB;
+            padding: 28px 24px;
+            overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        }
+
+        .sidebar h2 {
+            font-family: 'Poppins', sans-serif;
+            font-size: 24px;
+            font-weight: 800;
+            color: #FF5900;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar h2::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 24px;
+            background: linear-gradient(180deg, #FF5900 0%, #FA6E22 100%);
+            border-radius: 4px;
+        }
+
+        .sidebar-subtitle {
+            font-size: 12px;
+            color: #888888;
+            font-weight: 500;
+            margin-bottom: 24px;
+            line-height: 1.4;
+        }
+
+        .sidebar h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #1A1A1A;
+            font-weight: 700;
+            margin: 22px 0 14px 0;
+            letter-spacing: 0.8px;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            padding: 12px 14px;
+            margin-bottom: 8px;
+            background: #F8F7F4;
+            border: 1px solid #E5E0DB;
+            color: #1A1A1A;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            text-align: left;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: #FFF3ED;
+            border-color: #FFD1B3;
+            box-shadow: 0 2px 6px rgba(255, 89, 0, 0.08);
+        }
+
+        .btn.active {
+            background: linear-gradient(135deg, #FF5900 0%, #FA6E22 100%);
+            border-color: #FF5900;
+            color: #FFFFFF;
+            box-shadow: 0 6px 16px rgba(255,89,0,0.25);
+        }
+
+        .btn input[type="checkbox"] {
+            margin-right: 10px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #FF5900;
+        }
+
+        #map { width: 100%; height: 100%; background: #FFFFFF; }
+
+        /* Right Sidebar */
+        .right-sidebar {
+            background: linear-gradient(180deg, #FFFFFF 0%, #FAFAF8 100%);
+            border-left: 1px solid #E5E0DB;
+            padding: 28px 24px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .right-sidebar h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #1A1A1A;
+            margin-bottom: 14px;
+            margin-top: 14px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+        }
+
+        .right-sidebar h3::before {
+            content: attr(data-icon);
+            margin-right: 6px;
+        }
+
+        .card {
+            background: #FFFFFF;
+            border: 1px solid #E5E0DB;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            transition: all 0.2s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+
+        .card.primary {
+            background: linear-gradient(135deg, #FF5900 0%, #FA6E22 100%);
+            border: none;
+            color: #FFFFFF;
+            box-shadow: 0 8px 20px rgba(255,89,0,0.2);
+        }
+
+        .card.primary .metric-label {
+            color: rgba(255, 255, 255, 0.85);
+        }
+
+        .card.primary .metric-value {
+            color: #CFFF00;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        .card.primary .metric-detail {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .metric-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #888888;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 800;
+            color: #FF5900;
+            margin-bottom: 6px;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .metric-detail {
+            font-size: 12px;
+            color: #888888;
+            font-weight: 500;
+        }
+
+        .button-group {
+            margin: 16px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .button-group button {
+            padding: 10px 12px;
+            background: #FF5900;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 10px rgba(255, 89, 0, 0.15);
+        }
+
+        .button-group button:hover {
+            background: #FA6E22;
+            box-shadow: 0 6px 14px rgba(255, 89, 0, 0.25);
+        }
+
+        .slider-container { margin: 16px 0; }
+
+        .slider-container input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(90deg, #FFE8D6 0%, #FFD1B3 100%);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #FF5900;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(255,89,0,0.35);
+            transition: all 0.2s ease;
+        }
+
+        .slider-container input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(255,89,0,0.45);
+        }
+
+        .slider-container input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #FF5900;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(255,89,0,0.35);
+        }
+
+        .slider-label {
+            font-size: 12px;
+            color: #1A1A1A;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+        }
+
+        .slider-hint {
+            font-size: 11px;
+            color: #888888;
+            margin-top: 6px;
+            font-weight: 500;
+        }
+
+        .info {
+            background: linear-gradient(135deg, #FFF3ED 0%, #FFFAF6 100%);
+            border: 1px solid #FFE0CC;
+            border-radius: 10px;
+            padding: 16px;
+            font-size: 12px;
+            color: #B34700;
+            line-height: 1.6;
+            margin-top: 20px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(255, 89, 0, 0.08);
+        }
+
+        .clear-btn {
+            width: 100%;
+            padding: 11px;
+            margin-top: 12px;
+            background: linear-gradient(135deg, #FF5900 0%, #FA6E22 100%);
+            border: none;
+            color: #FFFFFF;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(255,89,0,0.2);
+        }
+
+        .clear-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(255,89,0,0.3);
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #F8F7F4; }
+        ::-webkit-scrollbar-thumb { background: #D4CCBF; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #C4B5A8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Hybrid Expansion</h2>
+            <div class="sidebar-subtitle">Dynamic radius + actual coverage polygons</div>
+
+            <h3>Map Layers</h3>
+            <div class="button-group">
+                <button id="togglePolygons" onclick="window.toggleExistingPolygons()">✓ Hide Existing Coverage</button>
+                <button id="toggleRadiuses" onclick="window.toggleExistingRadiuses()">✗ Show Existing Radius</button>
+            </div>
+
+            <h3>New Store Radius</h3>
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Service Radius (km)</span>
+                    <span id="radiusValue" style="color: #FF5900; font-weight: 700;">4.0</span>
+                </div>
+                <input type="range" id="radiusSlider" min="2" max="15" step="0.1" value="4.0">
+            </div>
+
+            <h3>Hybrid Fleet Feasibility</h3>
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Deliverable by Hybrid (%)</span>
+                    <span id="feasibilityValue" style="color: #FF5900; font-weight: 700;">100</span>
+                </div>
+                <input type="range" id="feasibilitySlider" min="0" max="100" step="5" value="100">
+                <div class="slider-hint">Adjust based on fleet capacity</div>
+            </div>
+
+            <h3>Order Growth</h3>
+            <div class="slider-container">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="number" id="growthInput" min="0" max="500" step="5" value="0" style="flex: 1; padding: 10px; background: #F8F7F4; border: 1px solid #E5E0DB; color: #1A1A1A; border-radius: 6px; font-size: 13px; font-weight: 500;">
+                    <span style="font-size: 12px; color: #1A1A1A; font-weight: 600;">%</span>
+                </div>
+                <div class="slider-hint">Expected order volume growth</div>
+            </div>
+
+            <h3>New Stores (Select to view)</h3>
+            <div id="newStores"></div>
+            <button class="clear-btn" onclick="clearAll()">Clear All</button>
+        </div>
+
+        <div id="map"></div>
+
+        <div class="right-sidebar">
+            <h3 data-icon="📊">Hybrid Fleet Impact</h3>
+            <div class="card">
+                <div class="metric-label">Selected Stores</div>
+                <div class="metric-value" id="storeCount" style="color: #1A1A1A; font-size: 28px;">0</div>
+            </div>
+            <div class="card">
+                <div class="metric-label">Additional Orders (Not Covered)</div>
+                <div class="metric-value" id="totalGain" style="color: #1A1A1A; font-size: 24px;">—</div>
+                <div class="metric-detail">orders/month (total opportunity)</div>
+            </div>
+            <div class="card">
+                <div class="metric-label">🎯 Hybrid Feasible Orders</div>
+                <div class="metric-value" id="feasibleOrders" style="color: #10B981; font-size: 24px;">—</div>
+                <div class="metric-detail">orders/month (at current %)</div>
+            </div>
+            <div class="card">
+                <div class="metric-label">Daily Average</div>
+                <div class="metric-value" id="dailyGain" style="color: #10B981; font-size: 24px;">—</div>
+                <div class="metric-detail">orders/day (hybrid feasible)</div>
+            </div>
+            <div class="card">
+                <div class="metric-label">Service Radius</div>
+                <div class="metric-detail" id="radiusDisplay" style="margin-top: 8px; font-size: 13px; color: #1A1A1A; font-weight: 600;">—</div>
+            </div>
+
+            <div class="info" id="storeDetails">
+                <strong>Selected:</strong> None
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load data (will be injected via Python script)
+        // Placeholder - actual data gets embedded
+
+        const existingStores = {
+            'Talabat Mart , Old Al Rayyan': {lat: 25.299598429156585, lng: 51.44097128130225, radius: 5.0},
+            'talabat mart, Abu Hamour': {lat: 25.2331698397692, lng: 51.48532120185243, radius: 6.0},
+            'Talabat Mart, Al Khor': {lat: 25.66607733518371, lng: 51.48818130046386, radius: 11.0},
+            'Talabat Mart, Dafna': {lat: 25.28156634857273, lng: 51.54087341289138, radius: 5.0},
+            'Talabat Mart, Al Waab': {lat: 25.23236502471095, lng: 51.57020741289138, radius: 9.0},
+            'Talabat Mart, Lusail': {lat: 25.1824999, lng: 51.474617, radius: 7.0},
+            'Talabat Mart, Doha Mall': {lat: 25.276, lng: 51.532, radius: 6.0},
+            'Talabat Mart, The Pearl': {lat: 25.169, lng: 51.533, radius: 8.0}
+        };
+
+        const newStores = {
+            'Al-Manara Store': {lat: 25.34, lng: 51.48},
+            'West Bay Store': {lat: 25.307, lng: 51.512},
+            'Umm Ghuwailina Store': {lat: 25.252, lng: 51.497},
+            'Al Sadd Store': {lat: 25.295, lng: 51.530},
+            'Al Wakra Store': {lat: 25.158, lng: 51.609},
+            'Simaisma Store': {lat: 25.100, lng: 51.388},
+            'Mesaieed Store': {lat: 25.037, lng: 51.542}
+        };
+
+        const deliveryLocations = [
+            {lat: 25.28, lng: 51.51, orders: 480},
+            {lat: 25.32, lng: 51.49, orders: 320},
+            {lat: 25.31, lng: 51.53, orders: 280},
+            {lat: 25.26, lng: 51.52, orders: 190},
+            {lat: 25.18, lng: 51.61, orders: 240},
+            {lat: 25.11, lng: 51.39, orders: 150},
+            {lat: 25.05, lng: 51.55, orders: 110},
+            {lat: 25.34, lng: 51.46, orders: 220},
+            {lat: 25.30, lng: 51.48, orders: 190},
+            {lat: 25.25, lng: 51.50, orders: 160}
+        ];
+
+        let map;
+        let radiusCircles = [];
+        let storeMarkers = [];
+        let currentRadius = 4.0;
+        let currentFeasibility = 100;
+        let currentGrowth = 0;
+        let selectedStores = new Set();
+        let showExistingPolygons = true;
+        let showExistingRadiuses = false;
+        let existingRadiusLayers = [];
+        let existingPolygonLayers = [];
+
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.asin(Math.sqrt(a));
+            return R * c;
+        }
+
+        function renderCoveragePolygons() {
+            existingPolygonLayers.forEach(layer => {
+                try { map.removeLayer(layer); } catch(e) {}
+            });
+            existingPolygonLayers = [];
+
+            const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'];
+            let colorIdx = 0;
+
+            for (const [storeName, storeCoords] of Object.entries(existingStores)) {
+                const color = colors[colorIdx % colors.length];
+                const polygon = L.circle([storeCoords.lat, storeCoords.lng], {
+                    radius: storeCoords.radius * 1000,
+                    color: color,
+                    weight: 0,
+                    opacity: 0,
+                    fillColor: color,
+                    fillOpacity: 0.1
+                });
+
+                if (showExistingPolygons) {
+                    polygon.addTo(map);
+                }
+
+                existingPolygonLayers.push(polygon);
+                colorIdx++;
+            }
+        }
+
+        function calculateGainsForRadius(radius) {
+            const gains = {};
+
+            for (const [storeName, storeCoords] of Object.entries(newStores)) {
+                let additionalOrders = 0;
+                let totalInRadius = 0;
+
+                for (const location of deliveryLocations) {
+                    const distToNew = haversine(storeCoords.lat, storeCoords.lng, location.lat, location.lng);
+
+                    if (distToNew <= radius) {
+                        totalInRadius += location.orders;
+                        let isCovered = false;
+
+                        for (const [branchName, branchData] of Object.entries(existingStores)) {
+                            const distToExisting = haversine(branchData.lat, branchData.lng, location.lat, location.lng);
+                            if (distToExisting <= branchData.radius) {
+                                isCovered = true;
+                                break;
+                            }
+                        }
+
+                        if (!isCovered) {
+                            additionalOrders += location.orders;
+                        }
+                    }
+                }
+
+                gains[storeName] = {
+                    additional: additionalOrders,
+                    daily: additionalOrders / 30,
+                    totalInRadius: totalInRadius
+                };
+            }
+
+            return gains;
+        }
+
+        function updateMap() {
+            radiusCircles.forEach(c => {
+                try { map.removeLayer(c); } catch(e) {}
+            });
+            radiusCircles = [];
+            storeMarkers.forEach(m => {
+                try { map.removeLayer(m); } catch(e) {}
+            });
+            storeMarkers = [];
+
+            renderCoveragePolygons();
+
+            Object.entries(existingStores).forEach(([name, coords]) => {
+                const marker = L.marker([coords.lat, coords.lng], {
+                    icon: L.divIcon({
+                        html: '<div style="position:relative;width:45px;height:45px;"><svg viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.4));"><path d="M22.5 2 L38 15 L38 40 Q38 42 36 42 L8 42 Q6 42 6 40 L6 15 Z" fill="#FF5900" stroke="white" stroke-width="2"/><circle cx="22.5" cy="25" r="5" fill="white"/><rect x="16" y="32" width="13" height="8" fill="white" stroke="white" stroke-width="1.5" opacity="0.9"/></svg></div>',
+                        iconSize: [45, 45],
+                        className: 'existing-store-marker'
+                    })
+                }).bindPopup('<strong>' + name.replace('talabat mart, ', '') + '</strong><br>Radius: ' + coords.radius + 'km').addTo(map);
+                storeMarkers.push(marker);
+
+                const circle = L.circle([coords.lat, coords.lng], {
+                    radius: coords.radius * 1000,
+                    color: '#0891b2',
+                    weight: 1,
+                    opacity: 0.15,
+                    fillColor: '#0891b2',
+                    fillOpacity: 0.05
+                });
+
+                if (showExistingRadiuses) {
+                    circle.addTo(map);
+                }
+
+                existingRadiusLayers.push(circle);
+                radiusCircles.push(circle);
+            });
+
+            Object.entries(newStores).forEach(([name, coords]) => {
+                const isSelected = selectedStores.has(name);
+                const marker = L.marker([coords.lat, coords.lng], {
+                    icon: L.divIcon({
+                        html: '<div style="position:relative;width:' + (isSelected ? 50 : 40) + 'px;height:' + (isSelected ? 50 : 40) + 'px;"><svg viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 3px 10px rgba(0,0,0,0.5));"><circle cx="22.5" cy="22.5" r="20" fill="' + (isSelected ? '#10b981' : '#9ca3af') + '" stroke="white" stroke-width="3"/><line x1="22.5" y1="10" x2="22.5" y2="35" stroke="white" stroke-width="3" stroke-linecap="round"/><line x1="10" y1="22.5" x2="35" y2="22.5" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>',
+                        iconSize: [isSelected ? 50 : 40, isSelected ? 50 : 40],
+                        className: 'new-store-marker'
+                    })
+                }).bindPopup('<strong>' + name + '</strong> (NEW)<br>Radius: ' + currentRadius.toFixed(1) + 'km').addTo(map);
+                storeMarkers.push(marker);
+
+                if (isSelected) {
+                    const circle = L.circle([coords.lat, coords.lng], {
+                        radius: currentRadius * 1000,
+                        color: '#FF5900',
+                        weight: 3,
+                        opacity: 0.9,
+                        fillOpacity: 0,
+                        dashArray: '5, 5'
+                    }).addTo(map);
+                    radiusCircles.push(circle);
+                }
+            });
+
+            updateImpactPanel();
+        }
+
+        function updateImpactPanel() {
+            if (selectedStores.size === 0) {
+                document.getElementById('storeCount').textContent = '0';
+                document.getElementById('totalGain').textContent = '—';
+                document.getElementById('feasibleOrders').textContent = '—';
+                document.getElementById('dailyGain').textContent = '—';
+                document.getElementById('radiusDisplay').textContent = '—';
+                document.getElementById('storeDetails').innerHTML = '<strong>Selected:</strong> None';
+                return;
+            }
+
+            const gains = calculateGainsForRadius(currentRadius);
+
+            let totalGain = 0, totalDaily = 0;
+            selectedStores.forEach(name => {
+                if (gains[name]) {
+                    totalGain += gains[name].additional;
+                    totalDaily += gains[name].daily;
+                }
+            });
+
+            const totalWithGrowth = totalGain * (1 + currentGrowth / 100);
+            const dailyWithGrowth = totalDaily * (1 + currentGrowth / 100);
+
+            const feasibleOrders = Math.round(totalWithGrowth * currentFeasibility / 100);
+            const feasibleDaily = Math.round(dailyWithGrowth * currentFeasibility / 100);
+
+            document.getElementById('storeCount').textContent = selectedStores.size;
+            document.getElementById('totalGain').textContent = Math.round(totalWithGrowth).toLocaleString();
+            document.getElementById('feasibleOrders').textContent = feasibleOrders.toLocaleString();
+            document.getElementById('dailyGain').textContent = feasibleDaily.toLocaleString();
+            document.getElementById('radiusDisplay').textContent = currentRadius.toFixed(1) + ' km (dynamic)';
+
+            let detailsHtml = '<strong style="color: #FF5900;">Coverage Breakdown:</strong><br>';
+            Array.from(selectedStores).sort().forEach(name => {
+                const gain = gains[name];
+                if (gain) {
+                    const gainWithGrowth = Math.round(gain.additional * (1 + currentGrowth / 100));
+                    const feasible = Math.round(gainWithGrowth * currentFeasibility / 100);
+                    const uncoveredPct = Math.round((gainWithGrowth / gain.totalInRadius) * 100);
+                    detailsHtml += `<div style="margin: 10px 0; padding: 10px; background: #FFF3ED; border-left: 3px solid #FF5900; border-radius: 4px;">
+                        <strong style="color: #1A1A1A; font-size: 12px;">${name}</strong><br>
+                        <span style="font-size: 11px; color: #FF5900;">🟠 Uncovered: ${gainWithGrowth.toLocaleString()} orders (${uncoveredPct}%)</span><br>
+                        <span style="font-size: 11px; color: #888888;">⚪ Covered: ${(gain.totalInRadius - gainWithGrowth).toLocaleString()} orders</span>
+                    </div>`;
+                }
+            });
+            document.getElementById('storeDetails').innerHTML = detailsHtml;
+        }
+
+        window.toggleStore = function(name) {
+            if (selectedStores.has(name)) {
+                selectedStores.delete(name);
+            } else {
+                selectedStores.add(name);
+            }
+
+            document.querySelectorAll('.btn').forEach(b => {
+                const checkbox = b.querySelector('input[type="checkbox"]');
+                if (b.dataset.store === name) {
+                    checkbox.checked = selectedStores.has(name);
+                    b.classList.toggle('active', selectedStores.has(name));
+                }
+            });
+
+            updateMap();
+        };
+
+        window.clearAll = function() {
+            selectedStores.clear();
+            document.querySelectorAll('.btn input[type="checkbox"]').forEach(cb => cb.checked = false);
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            updateMap();
+        };
+
+        window.toggleExistingPolygons = function() {
+            showExistingPolygons = !showExistingPolygons;
+            existingPolygonLayers.forEach(layer => {
+                if (showExistingPolygons) {
+                    map.addLayer(layer);
+                } else {
+                    map.removeLayer(layer);
+                }
+            });
+            const btn = document.getElementById('togglePolygons');
+            btn.textContent = showExistingPolygons ? '✓ Hide Existing Coverage' : '✗ Show Existing Coverage';
+        };
+
+        window.toggleExistingRadiuses = function() {
+            showExistingRadiuses = !showExistingRadiuses;
+            existingRadiusLayers.forEach(layer => {
+                if (showExistingRadiuses) {
+                    map.addLayer(layer);
+                } else {
+                    map.removeLayer(layer);
+                }
+            });
+            const btn = document.getElementById('toggleRadiuses');
+            btn.textContent = showExistingRadiuses ? '✓ Hide Existing Radius' : '✗ Show Existing Radius';
+        };
+
+        document.getElementById('radiusSlider').addEventListener('input', function(e) {
+            currentRadius = parseFloat(e.target.value);
+            document.getElementById('radiusValue').textContent = currentRadius.toFixed(1);
+            updateMap();
+        });
+
+        document.getElementById('feasibilitySlider').addEventListener('input', function(e) {
+            currentFeasibility = parseInt(e.target.value);
+            document.getElementById('feasibilityValue').textContent = currentFeasibility;
+            updateImpactPanel();
+        });
+
+        document.getElementById('growthInput').addEventListener('input', function(e) {
+            currentGrowth = parseFloat(e.target.value) || 0;
+            updateImpactPanel();
+        });
+
+        function initMap() {
+            map = L.map('map').setView([25.35, 51.50], 10);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© CartoDB',
+            maxZoom: 19
+        }).addTo(map);
+
+            const storesDiv = document.getElementById('newStores');
+            Object.keys(newStores).sort().forEach(name => {
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.dataset.store = name;
+                btn.innerHTML = `<input type="checkbox"> ${name}`;
+                btn.onclick = () => toggleStore(name);
+                storesDiv.appendChild(btn);
+            });
+
+            updateMap();
+        }
+
+        initMap();
+    </script>
+</body>
+</html>
