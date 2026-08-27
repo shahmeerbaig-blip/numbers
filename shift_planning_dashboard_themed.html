@@ -857,50 +857,6 @@ function loadDataForDateRange() {
   }).getInitialData({ from, to, country });
 }
 
-// Include all other functions from the original script...
-// For brevity, including key helper functions:
-
-function buildSelects() {
-  ['s1s','s1e','s2s','s2e','s3s','s3e'].forEach(id => {
-    const el = document.getElementById(id);
-    el.innerHTML = '';
-    for (let h = 0; h <= 35; h++) {
-      const o = document.createElement('option');
-      o.value = h;
-      const hh = h % 24, ap = hh < 12 ? 'AM' : 'PM', d = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
-      o.textContent = h >= 24 ? `${d}:00 ${ap}(+1)` : `${d}:00 ${ap}`;
-      el.appendChild(o);
-    }
-  });
-}
-
-function setNShifts(n) {nShifts=n;[1,2,3].forEach(k=>document.getElementById(`sc${k}`).classList.toggle('on',k===n));document.getElementById('blk2').classList.toggle('hidden',n<2);document.getElementById('blk3').classList.toggle('hidden',n<3);document.getElementById('kpi3').style.display=n>=3?'':'none';const th3=document.getElementById('th-s3');const th3r=document.getElementById('th-s3r');if(th3)th3.style.display=n>=3?'':'none';if(th3r)th3r.style.display=n>=3?'':'none';if(n<3)Object.keys(branchCfg).forEach(k=>{if(branchCfg[k]?.manualRiders)branchCfg[k].manualRiders.r3=0;});if(editingBranch){saveCfg(editingBranch);}render();}
-
-function doReset() {activeBr=new Set(branches.map(b=>b.name));editingBranch=null;Object.keys(branchCfg).forEach(k=>delete branchCfg[k]);nShifts=DEF_NSHIFTS;S=JSON.parse(JSON.stringify(DEF_S));orderPct=100;stkOn=false;stkRate=25;noShowPct=0;maxUTR=0;document.getElementById('utr-cap-slider').value=0;document.getElementById('utr-cap-val').textContent='No cap';document.getElementById('utr-cap-badge').textContent='UTR cap off';document.getElementById('utr-cap-badge').classList.remove('on');document.getElementById('utr-cap-slider').style.background='';document.getElementById('ord-slider').value=100;document.getElementById('ord-val').textContent='100%';document.getElementById('ord-hint').textContent='100%';document.getElementById('ord-badge').textContent='100% orders';document.getElementById('ord-slider').style.background='linear-gradient(to right,var(--eve) 0%,var(--eve) 100%,var(--border2) 100%,var(--border2) 100%)';document.getElementById('stk-toggle').checked=false;document.getElementById('stk-rate').value=25;document.getElementById('stk-val').textContent='25%';document.getElementById('stk-rate-row').style.opacity='0.4';document.getElementById('stk-rate-row').style.pointerEvents='none';document.getElementById('stk-badge').classList.remove('on');document.getElementById('ns-slider').value=0;document.getElementById('ns-val').textContent='0%';document.getElementById('ns-badge').textContent='0% absent';document.getElementById('ns-badge').classList.remove('on');document.getElementById('ns-slider').style.background='';updateSidebarLabel(null);document.getElementById('s1s').value=9;document.getElementById('s1e').value=19;document.getElementById('s2s').value=14;document.getElementById('s2e').value=24;document.getElementById('s3s').value=20;document.getElementById('s3e').value=30;Object.keys(distFilter).forEach(k=>delete distFilter[k]);const distBadge=document.getElementById('dist-badge');if(distBadge){distBadge.classList.remove('on');distBadge.textContent='Dist filter off';}setNShifts(2);buildChips();buildSliders();buildDistSliders();render();}
-
-function allBranches() {
-  branches.forEach(b => activeBr.add(b.name));
-  buildChips();
-}
-
-function clearBranches() {
-  activeBr.clear();
-  buildChips();
-}
-
-function saveCurrentBranch() {
-  if(editingBranch) saveCfg(editingBranch);
-  alert('Branch configuration saved!');
-}
-
-function resetCurrentBranch() {
-  if(editingBranch && branchCfg[editingBranch]) {
-    delete branchCfg[editingBranch];
-    loadCfgToSidebar(editingBranch);
-    render();
-  }
-}
-
 // helpers ─────────────────────────────────────────────────────────
 const HRL = Array.from({length:24}, (_,i) => {const h=i===0?12:i>12?i-12:i;return`${h}${i<12?'AM':'PM'}`});
 function fmtH(h) {h=((h%24)+24)%24;const ap=h<12?'AM':'PM';const d=h===0?12:h>12?h-12:h;return`${d}:00 ${ap}`}
@@ -991,50 +947,7 @@ function buildDistSliders() {const c=document.getElementById('dist-sliders');if(
 
 function clearDistFilter(i) {const b=branches[i];if(!b)return;distFilter[b.name]=0;const inp=document.getElementById(`di${i}`);if(inp){inp.value='';inp.style.color='var(--text)';inp.style.borderColor='var(--border2)';}const anyActive=Object.values(distFilter).some(x=>x>0);const badge=document.getElementById('dist-badge');if(badge){badge.classList.toggle('on',anyActive);badge.textContent=anyActive?'Dist filter ON':'Dist filter off';}render();}
 
-function exportConfiguration() {
-  let csv = 'Branch,Shift,Start,End,Riders\n';
-  branches.forEach(b => {
-    csv += `${b.name},Data exported\n`;
-  });
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `talabat_shift_plan_${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
-}
-
-function getDefCfg(name) {
-  const def = branches.find(d => d.name === name);
-  return branchCfg[name] || {
-    nShifts: DEF_NSHIFTS,
-    S: JSON.parse(JSON.stringify(DEF_S)),
-    manualRiders: null,
-    riders: def ? def.riders : 10
-  };
-}
-
-function saveCfg(name) {
-  const def = branches.find(d => d.name === name) || { riders: 10 };
-  if(!branchCfg[name]) branchCfg[name] = { manualRiders: null, riders: def.riders };
-  branchCfg[name].nShifts = nShifts;
-  branchCfg[name].S = JSON.parse(JSON.stringify(S));
-}
-
-function loadCfgToSidebar(name) {
-  const cfg = getDefCfg(name);
-  nShifts = cfg.nShifts;
-  S = JSON.parse(JSON.stringify(cfg.S));
-  document.getElementById('s1s').value = S[0].s;
-  document.getElementById('s1e').value = S[0].e;
-  document.getElementById('s2s').value = S[1].s;
-  document.getElementById('s2e').value = S[1].e;
-  document.getElementById('s3s').value = S[2].s;
-  document.getElementById('s3e').value = S[2].e;
-}
+function exportConfiguration(){let csv='Branch,Shift,Start,End,Riders\n';branches.forEach(b=>{csv+=`${b.name},Data exported\n`;});const blob=new Blob([csv],{type:'text/csv'});const url=window.URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`talabat_shift_plan_${new Date().toISOString().split('T')[0]}.csv`;document.body.appendChild(a);a.click();document.body.removeChild(a);window.URL.revokeObjectURL(url);}
 
 // Event listeners
 document.getElementById('ord-slider').oninput=function(){orderPct=+this.value;const pct=orderPct+'%';document.getElementById('ord-val').textContent=pct;document.getElementById('ord-hint').textContent=pct;document.getElementById('ord-badge').textContent=orderPct+'% orders';this.style.background=`linear-gradient(to right,var(--eve) 0%,var(--eve) ${orderPct}%,var(--border2) ${orderPct}%,var(--border2) 100%)`;render();};document.getElementById('stk-toggle').onchange=function(){stkOn=this.checked;const rr=document.getElementById('stk-rate-row');rr.style.opacity=stkOn?'1':'0.4';rr.style.pointerEvents=stkOn?'auto':'none';document.getElementById('stk-badge').classList.toggle('on',stkOn);render();};document.getElementById('stk-rate').oninput=function(){stkRate=+this.value;document.getElementById('stk-val').textContent=stkRate+'%';render();};document.getElementById('utr-cap-slider').oninput=function(){const raw=+this.value;maxUTR=raw===0?0:+(raw/10).toFixed(1);const badge=document.getElementById('utr-cap-badge');const hint=document.getElementById('utr-cap-hint');if(maxUTR>0){document.getElementById('utr-cap-val').textContent=maxUTR.toFixed(1);badge.classList.add('on');badge.textContent='Cap '+maxUTR.toFixed(1);hint.innerHTML=`Hours where UTR > <b>${maxUTR.toFixed(1)}</b> are <b>over-capacity</b>.`;this.style.background=`linear-gradient(to right,var(--s3) 0%,var(--s3) ${raw/40*100}%,var(--border2) ${raw/40*100}%,var(--border2) 100%)`;}else{document.getElementById('utr-cap-val').textContent='No cap';badge.classList.remove('on');badge.textContent='UTR cap off';hint.innerHTML='Drag to set. Hours where UTR exceeds this cap show as <b>over-capacity</b>.';this.style.background='';}render();};document.getElementById('ns-slider').oninput=function(){noShowPct=+this.value;document.getElementById('ns-val').textContent=noShowPct+'%';const badge=document.getElementById('ns-badge');if(noShowPct>0){badge.classList.add('on');badge.textContent=noShowPct+'% absent';}else{badge.classList.remove('on');badge.textContent='0% absent';}this.style.background=`linear-gradient(to right,var(--unc) 0%,var(--unc) ${noShowPct*2}%,var(--border2) ${noShowPct*2}%,var(--border2) 100%)`;render();};
