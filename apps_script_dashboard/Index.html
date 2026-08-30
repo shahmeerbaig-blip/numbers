@@ -71,6 +71,21 @@
   .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 18px; }
   .subtitle .dot { margin: 0 6px; color: var(--border); }
 
+  .tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab {
+    border: none; background: transparent; color: var(--text-secondary); font-family: inherit;
+    font-size: 13.5px; font-weight: 600; padding: 9px 14px; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text-heading); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .pagination {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 2px 0; font-size: 12px; color: var(--text-secondary);
+  }
+  .pagination .btn { padding: 4px 10px; font-size: 12px; }
+
   .filter-row {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     background: var(--surface-1); border: 1px solid var(--border);
@@ -218,6 +233,13 @@
 
   <div id="globalError"></div>
 
+  <div class="tab-bar">
+    <button class="tab active" id="tab-btn-patterns" data-tab="patterns">Fraud Patterns</button>
+    <button class="tab" id="tab-btn-lookup" data-tab="lookup">Customer Lookup</button>
+  </div>
+
+  <div id="tab-patterns" class="tab-panel">
+
   <div class="filter-row">
     <span class="label">Date range (patterns 1 &amp; 2)</span>
     <button class="pill" data-days="7">Last 7 days</button>
@@ -272,6 +294,7 @@
         <tbody></tbody>
       </table>
     </div>
+    <div class="pagination" id="location-pagination"></div>
   </div>
 
   <!-- Section 2: repeat-offender risk score -->
@@ -324,6 +347,7 @@
         <tbody></tbody>
       </table>
     </div>
+    <div class="pagination" id="risk-pagination"></div>
   </div>
 
   <!-- Section 3: fraud network (device/mobile linkage) -->
@@ -368,7 +392,82 @@
         <tbody></tbody>
       </table>
     </div>
+    <div class="pagination" id="network-pagination"></div>
   </div>
+
+  </div><!-- /tab-patterns -->
+
+  <div id="tab-lookup" class="tab-panel" style="display:none;">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">Customer Lookup</div>
+          <h2>Investigate a single customer</h2>
+          <p>Search by Talabat analytical customer ID (or a raw numeric customer ID). Shows their full order
+             history with reasons and refunded amounts, plus which of the three fraud patterns above they've
+             triggered.</p>
+        </div>
+      </div>
+      <div class="controls" style="margin-top: 0;">
+        <div class="control" style="flex: 1; min-width: 260px;">
+          <label for="lookupQuery">Analytical customer ID or raw customer ID</label>
+          <input type="text" id="lookupQuery" placeholder="e.g. f83cc21db05d37df946d75 or 57780143" style="width: 100%;">
+        </div>
+        <button class="btn btn-primary" id="lookupSearchBtn" style="align-self: flex-end;">Search</button>
+      </div>
+      <div class="filter-row" style="margin-top: 12px;">
+        <span class="label">Window</span>
+        <button class="pill" data-lookup-days="30">Last 30 days</button>
+        <button class="pill active" data-lookup-days="90">Last 90 days</button>
+        <button class="pill" data-lookup-days="180">Last 180 days</button>
+        <button class="pill" data-lookup-days="365">Last 365 days</button>
+        <button class="pill" data-lookup-days="all">All time</button>
+        <span class="custom-days">
+          or custom <input type="number" id="lookupCustomDays" min="1" max="3650" placeholder="days"> days
+        </span>
+      </div>
+    </div>
+
+    <div id="lookupEmptyState" class="card">
+      <div class="empty-state">Search for a customer above to see their order history and pattern flags.</div>
+    </div>
+
+    <div id="lookupResult" style="display:none;">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Identity</div>
+            <h2 id="lookupIdentityHeading">&mdash;</h2>
+            <p id="lookupIdentityNote"></p>
+          </div>
+        </div>
+        <div class="stat-grid" id="lookupBadges"></div>
+        <div class="stat-grid" id="lookupStats"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Order history</div>
+            <h2>Orders, reasons &amp; refunded amounts</h2>
+            <p>One row per order &mdash; reasons and outcomes are the distinct set across every claim event on
+               that order.</p>
+          </div>
+        </div>
+        <div class="btn-row" style="margin: 4px 0 8px;">
+          <button class="btn" id="export-lookup-all">Download CSV (all)</button>
+          <button class="btn btn-primary" id="export-lookup-selected" disabled>Download CSV (0 selected)</button>
+        </div>
+        <div class="table-scroll">
+          <table id="table-lookup">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="lookup-pagination"></div>
+      </div>
+    </div>
+  </div><!-- /tab-lookup -->
 
   <footer>
     Source: fulfillment-dwh-production.curated_data_shared (orders, comp_and_refund_events) and
@@ -385,7 +484,8 @@
     daysBack: 30,
     location: { rows: [], sortKey: 'customer_pattern_claim_count', sortDir: 'desc', selected: new Set() },
     risk: { rows: [], sortKey: 'risk_score_0_100', sortDir: 'desc', selected: new Set() },
-    network: { rows: [], sortKey: 'network_shield_fraud_account_count', sortDir: 'desc', selected: new Set() }
+    network: { rows: [], sortKey: 'network_shield_fraud_account_count', sortDir: 'desc', selected: new Set() },
+    lookup: { rows: [], sortKey: 'order_date', sortDir: 'desc', selected: new Set(), daysBack: 90, allTime: false }
   };
 
   function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
@@ -546,6 +646,7 @@
           });
         });
         state.location.selected = new Set();
+        state.location.page = 1;
         renderLocationSection();
         setLoading('card-location', false);
         touchRefreshedStamp();
@@ -617,7 +718,7 @@
   document.getElementById('minClaims').addEventListener('change', loadRiskData);
   document.getElementById('refresh-risk').addEventListener('click', loadRiskData);
   document.querySelectorAll('.tier-toggle').forEach(function (cb) {
-    cb.addEventListener('change', renderRiskSection);
+    cb.addEventListener('change', function () { state.risk.page = 1; renderRiskSection(); });
   });
 
   function activeTiers() {
@@ -647,6 +748,7 @@
           });
         });
         state.risk.selected = new Set();
+        state.risk.page = 1;
         renderRiskSection();
         setLoading('card-risk', false);
         touchRefreshedStamp();
@@ -708,10 +810,11 @@
   ];
 
   function renderRiskTable() {
-    var proxyState = { rows: state.risk._filteredForTable || [], sortKey: state.risk.sortKey, sortDir: state.risk.sortDir, selected: state.risk.selected };
+    var proxyState = { rows: state.risk._filteredForTable || [], sortKey: state.risk.sortKey, sortDir: state.risk.sortDir, selected: state.risk.selected, page: state.risk.page };
     renderSortableTable('table-risk', RISK_COLUMNS, proxyState, function () {
       state.risk.sortKey = proxyState.sortKey;
       state.risk.sortDir = proxyState.sortDir;
+      state.risk.page = proxyState.page;
       renderRiskTable();
     }, 'risk');
   }
@@ -741,6 +844,7 @@
           });
         });
         state.network.selected = new Set();
+        state.network.page = 1;
         renderNetworkSection();
         setLoading('card-network', false);
         touchRefreshedStamp();
@@ -804,10 +908,13 @@
     return '<div class="stat-tile"><div class="label">' + esc(label) + '</div><div class="value">' + esc(value) + '</div></div>';
   }
 
+  var PAGE_SIZE = 20;
+
   function renderSortableTable(tableId, columns, sortState, onResort, exportPrefix) {
     var table = document.getElementById(tableId);
     var thead = table.querySelector('thead');
     var tbody = table.querySelector('tbody');
+    var paginationEl = document.getElementById(exportPrefix + '-pagination');
 
     var rows = sortState.rows.slice().sort(function (a, b) {
       var ka = a[sortState.sortKey], kb = b[sortState.sortKey];
@@ -817,6 +924,12 @@
       ka = String(ka == null ? '' : ka); kb = String(kb == null ? '' : kb);
       return sortState.sortDir === 'asc' ? ka.localeCompare(kb) : kb.localeCompare(ka);
     });
+
+    if (!sortState.page) sortState.page = 1;
+    var totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    if (sortState.page > totalPages) sortState.page = totalPages;
+    var pageStart = (sortState.page - 1) * PAGE_SIZE;
+    var pageRows = rows.slice(pageStart, pageStart + PAGE_SIZE);
 
     var allSelected = rows.length > 0 && rows.every(function (r) { return sortState.selected.has(r._rowId); });
     thead.innerHTML = '<tr><th class="chk-col"><input type="checkbox" id="' + exportPrefix + '-select-all"' + (allSelected ? ' checked' : '') + '></th>' +
@@ -830,10 +943,12 @@
         var key = th.dataset.key;
         if (sortState.sortKey === key) sortState.sortDir = sortState.sortDir === 'asc' ? 'desc' : 'asc';
         else { sortState.sortKey = key; sortState.sortDir = 'desc'; }
+        sortState.page = 1;
         onResort();
       });
     });
     document.getElementById(exportPrefix + '-select-all').addEventListener('change', function (e) {
+      // Select-all always applies to every matching row, not just the current page.
       rows.forEach(function (r) { if (e.target.checked) sortState.selected.add(r._rowId); else sortState.selected.delete(r._rowId); });
       onResort();
       updateSelectedButton(exportPrefix, sortState);
@@ -841,10 +956,11 @@
 
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="' + (columns.length + 1) + '"><div class="empty-state">No rows match the current toggles.</div></td></tr>';
+      if (paginationEl) paginationEl.innerHTML = '';
       return;
     }
 
-    tbody.innerHTML = rows.map(function (r) {
+    tbody.innerHTML = pageRows.map(function (r) {
       var checked = sortState.selected.has(r._rowId) ? ' checked' : '';
       return '<tr>' +
         '<td class="chk-col"><input type="checkbox" class="row-check" data-row="' + r._rowId + '"' + checked + '></td>' +
@@ -862,6 +978,17 @@
       });
     });
     wireCopyButtons(tbody);
+
+    if (paginationEl) {
+      paginationEl.innerHTML =
+        '<button class="btn" id="' + exportPrefix + '-page-prev"' + (sortState.page <= 1 ? ' disabled' : '') + '>&lsaquo; Prev</button>' +
+        '<span>Page ' + sortState.page + ' of ' + totalPages + ' (' + formatNum(rows.length) + ' rows)</span>' +
+        '<button class="btn" id="' + exportPrefix + '-page-next"' + (sortState.page >= totalPages ? ' disabled' : '') + '>Next &rsaquo;</button>';
+      var prevBtn = document.getElementById(exportPrefix + '-page-prev');
+      var nextBtn = document.getElementById(exportPrefix + '-page-next');
+      if (prevBtn) prevBtn.addEventListener('click', function () { sortState.page--; onResort(); });
+      if (nextBtn) nextBtn.addEventListener('click', function () { sortState.page++; onResort(); });
+    }
   }
 
   /* ---------- minimal SVG bar chart with hover tooltip ---------- */
@@ -916,10 +1043,134 @@
     });
   }
 
+  /* ---------- tabs ---------- */
+  document.querySelectorAll('.tab[data-tab]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.tab[data-tab]').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('tab-patterns').style.display = btn.dataset.tab === 'patterns' ? '' : 'none';
+      document.getElementById('tab-lookup').style.display = btn.dataset.tab === 'lookup' ? '' : 'none';
+    });
+  });
+
+  /* ---------- customer lookup ---------- */
+  document.querySelectorAll('.pill[data-lookup-days]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.pill[data-lookup-days]').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('lookupCustomDays').value = '';
+      state.lookup.allTime = btn.dataset.lookupDays === 'all';
+      if (!state.lookup.allTime) state.lookup.daysBack = Number(btn.dataset.lookupDays);
+    });
+  });
+  document.getElementById('lookupCustomDays').addEventListener('change', function (e) {
+    var v = Number(e.target.value);
+    if (!v || v < 1) return;
+    document.querySelectorAll('.pill[data-lookup-days]').forEach(function (b) { b.classList.remove('active'); });
+    state.lookup.allTime = false;
+    state.lookup.daysBack = v;
+  });
+
+  document.getElementById('lookupSearchBtn').addEventListener('click', loadCustomerLookup);
+  document.getElementById('lookupQuery').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') loadCustomerLookup();
+  });
+
+  function loadCustomerLookup() {
+    var query = document.getElementById('lookupQuery').value.trim();
+    if (!query) { showToast('Enter a customer ID first'); return; }
+    document.getElementById('lookupEmptyState').style.display = 'none';
+    document.getElementById('lookupResult').style.display = 'none';
+    clearError();
+    var searchBtn = document.getElementById('lookupSearchBtn');
+    searchBtn.disabled = true;
+    searchBtn.textContent = 'Searching...';
+    var opts = { query: query, allTime: state.lookup.allTime, daysBack: state.lookup.daysBack };
+    google.script.run
+      .withSuccessHandler(function (result) {
+        searchBtn.disabled = false;
+        searchBtn.textContent = 'Search';
+        if (result.error) {
+          document.getElementById('lookupEmptyState').style.display = '';
+          document.getElementById('lookupEmptyState').querySelector('.empty-state').textContent = result.error;
+          return;
+        }
+        renderLookupResult(result);
+      })
+      .withFailureHandler(function (err) {
+        searchBtn.disabled = false;
+        searchBtn.textContent = 'Search';
+        document.getElementById('lookupEmptyState').style.display = '';
+        showError('Customer lookup failed: ' + (err && err.message ? err.message : err));
+      })
+      .getCustomerLookup(opts);
+  }
+
+  function badgeTile(label, value, tier) {
+    return '<div class="stat-tile"><div class="label">' + esc(label) + ' <span class="tier-badge tier-' + tier + '">FLAG</span></div>' +
+      '<div class="value" style="font-size:15px;">' + esc(value) + '</div></div>';
+  }
+
+  function renderLookupResult(result) {
+    document.getElementById('lookupResult').style.display = '';
+    document.getElementById('lookupIdentityHeading').textContent = result.analyticalId || result.query;
+    var rawIdsText = result.accountIds && result.accountIds.length ? 'Raw account ID(s): ' + result.accountIds.join(', ') : '';
+    document.getElementById('lookupIdentityNote').textContent = [rawIdsText, result.linkedAccountNote].filter(Boolean).join(' — ');
+
+    var badges = [];
+    if (result.patterns.locationChange) {
+      badges.push(badgeTile('Location-change abuse', result.locationChangeFlaggedCount + ' flagged orders', 'HIGH'));
+    }
+    if (result.patterns.repeatOffender) {
+      badges.push(badgeTile('High claim frequency', (result.claims ? result.claims.claim_count : 0) + ' claims in window', 'HIGH'));
+    }
+    var maxLinked = (result.network || []).reduce(function (m, r) { return Math.max(m, Number(r.network_shield_fraud_account_count) || 0); }, 0);
+    if (result.patterns.fraudNetwork) {
+      badges.push(badgeTile('Fraud network linked', maxLinked + ' linked fraud accounts', 'HIGH'));
+    }
+    if (!badges.length) badges.push(badgeTile('No patterns triggered', 'in the selected window', 'LOW'));
+    document.getElementById('lookupBadges').innerHTML = badges.join('');
+
+    var c = result.claims;
+    var net = result.network && result.network[0];
+    document.getElementById('lookupStats').innerHTML = [
+      statTile('Orders (claims history)', formatCompact(result.orders.length)),
+      c ? statTile('Total claims', formatCompact(c.claim_count)) : '',
+      c ? statTile('Total value (EUR)', '€' + formatCompact(c.total_claim_value_eur)) : '',
+      c ? statTile('Item vs cancellation', c.item_claim_count + ' / ' + c.cancellation_claim_count) : '',
+      net ? statTile('Blocked?', bool(net.is_blocked) ? 'YES' : 'No') : '',
+      net ? statTile('Shield fraud flag?', bool(net.is_shield_fraud) ? 'YES' : 'No') : ''
+    ].filter(Boolean).join('');
+
+    state.lookup.rows = result.orders.map(function (r, i) {
+      return Object.assign({}, r, { _rowId: 'lookup-' + i, total_value_eur: num(r.total_value_eur) });
+    });
+    state.lookup.selected = new Set();
+    state.lookup.page = 1;
+    renderLookupTable();
+  }
+
+  var LOOKUP_COLUMNS = [
+    { key: 'order_id', label: 'Order' },
+    { key: 'order_date', label: 'Order date' },
+    { key: 'reasons', label: 'Reason(s)' },
+    { key: 'event_types', label: 'Event type(s)' },
+    { key: 'outcomes', label: 'Outcome(s)' },
+    { key: 'request_types', label: 'Request type(s)' },
+    { key: 'vendor_id', label: 'Vendor' },
+    { key: 'total_value_eur', label: 'Refunded/comp value (EUR)', num: true, transform: function (v) { return formatNum(v, 2); } },
+    { key: 'last_claim_date', label: 'Last claim' }
+  ];
+
+  function renderLookupTable() {
+    renderSortableTable('table-lookup', LOOKUP_COLUMNS, state.lookup, renderLookupTable, 'lookup');
+  }
+
   /* ---------- wire up CSV export buttons ---------- */
   wireExportButtons('location', LOCATION_COLUMNS, state.location, function () { return state.location.rows; });
   wireExportButtons('risk', RISK_COLUMNS, state.risk, function () { return state.risk._filteredForTable || []; });
   wireExportButtons('network', NETWORK_COLUMNS, state.network, function () { return state.network.rows; });
+  wireExportButtons('lookup', LOOKUP_COLUMNS, state.lookup, function () { return state.lookup.rows; });
 
   /* ---------- initial load ---------- */
   loadLocationData();

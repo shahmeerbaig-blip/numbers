@@ -47,7 +47,42 @@ on `tlb-data-dev`.
    version of the same idea.
 
 Every section already filters down to flagged/violating rows only — none of
-them pull the full customer or order base.
+them pull the full customer or order base. Each table is also paginated at
+20 rows/page (Prev/Next below the table) so a large result set doesn't stall
+the page rendering hundreds of rows at once — sort, "select all", and CSV
+export still operate on the full filtered set, not just the visible page.
+
+## Customer Lookup tab
+
+A second tab (next to "Fraud Patterns") for investigating one customer
+directly: search by analytical customer ID or raw numeric customer ID, pick
+a window (30/90/180/365 days, or **All time**, plus a custom day count), and
+it shows:
+
+- **Identity** — the analytical ID, the raw account ID(s) it resolves to
+  (an analytical ID can be linked to more than one raw account if Talabat's
+  identity stitching has merged them — capped at the 10 most recently active,
+  since a handful of analytical IDs are degenerate catch-alls linked to
+  1000+ accounts and aren't a real "same person" signal).
+- **Pattern badges** — which of the three patterns above this customer has
+  actually triggered in the selected window, computed live rather than
+  requiring you to cross-reference the other three tables by hand.
+- **Order history** — one row per order with the distinct set of contact
+  reasons, event types, outcomes, and refunded/compensated EUR value across
+  every claim event on that order. Sortable, paginated, CSV-exportable.
+
+Two cost notes specific to this tab:
+- "All time" for the order-history and claim-total queries (against
+  `comp_and_refund_events`) is genuinely unbounded. For the location-change
+  check specifically (against the much larger `orders` table),
+  "All time" is capped at 2 years — an unbounded scan of that table for even
+  one customer blows past BigQuery's bytes-billed safety limit, tested
+  directly.
+- Each search runs up to 5 sequential BigQuery queries (ID resolution, order
+  history, location-change check, claims aggregate, fraud-network lookup),
+  so expect it to take longer than the toggle-driven refreshes on the other
+  tab — it's a deliberate one-customer investigation action, not something
+  that runs on every keystroke.
 
 ## Toggles on the dashboard
 
@@ -92,9 +127,16 @@ internal-only.
   and `customer_repeat_refund_risk_score.sql` in the repo root — this dashboard
   doesn't add a country toggle on top of that. Section 3 is also filtered to
   `country_code = 'QA'`.
-- All SQL inputs from the UI go through named BigQuery query parameters
-  (`@days_back`, `@min_shift_meters`, `@ids`, ...), never string concatenation,
-  so the toggles can't be turned into SQL injection.
+- Most SQL inputs from the UI go through named BigQuery query parameters
+  (`@days_back`, `@min_shift_meters`, `@min_claims`, ...). The one exception is
+  customer/account ID lists (used for analytical-ID resolution and the
+  Customer Lookup tab), which are built as literal `IN (...)` lists instead
+  of a bound `ARRAY` parameter — a real bug was found where BigQuery's
+  Advanced Service silently matched zero rows on a bound array parameter
+  instead of erroring. Every ID in those lists is validated as a clean
+  integer (`isFinite` + `Math.trunc` + string round-trip check) before being
+  inlined, so there's no injection surface despite not being a bound
+  parameter.
 - The two source `.sql` files in the repo root are the canonical, reviewable
   version of rules 1 and 2 — the queries embedded in `Code.gs` are the same
   logic, just parameterized. Rule 3 currently only exists inside `Code.gs`;
