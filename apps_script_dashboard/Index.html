@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6; /* categorical slot 1 - blue, trend chart */
+    --status-good:    #0ca30c; /* LOW risk */
+    --status-warning: #fab219; /* MEDIUM risk */
+    --status-critical:#d03b3b; /* HIGH risk */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  body { padding: 20px 24px 48px; }
+
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 20px; }
+
+  .filter-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 20px;
+  }
+  .filter-row .label { font-size: 12px; color: var(--text-secondary); margin-right: 4px; }
+  .pill {
+    border: 1px solid var(--border); background: transparent; color: var(--text-primary);
+    border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+  }
+  .pill:hover { background: rgba(128,128,128,0.10); }
+  .pill.active { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+  .pill.active::before { content: "\2713"; margin-right: 6px; font-weight: 700; }
+  .custom-days { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+  .custom-days input { width: 64px; }
+
+  input[type="number"], input[type="text"] {
+    background: var(--surface-1); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 13px;
+  }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;
+    transition: opacity 0.15s ease;
+  }
+  .card.is-loading { opacity: 0.55; pointer-events: none; }
+
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+  .card-head h2 { font-size: 16px; margin: 0 0 4px; }
+  .card-head p { font-size: 12.5px; color: var(--text-secondary); margin: 0; max-width: 640px; }
+
+  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .control { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-secondary); }
+  .checkbox-group { display: flex; gap: 10px; align-items: center; }
+  .checkbox-group label { display: flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--text-primary); cursor: pointer; }
+
+  .refresh-btn {
+    border: 1px solid var(--border); background: transparent; color: var(--text-primary);
+    border-radius: 6px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; align-self: flex-end;
+  }
+  .refresh-btn:hover { background: rgba(128,128,128,0.10); }
+
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px; margin: 16px 0;
+  }
+  .stat-tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .stat-tile .label { font-size: 11px; color: var(--text-secondary); }
+  .stat-tile .value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+
+  .chart-wrap { margin: 18px 0 10px; }
+  .chart-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .bar-rect { transition: opacity 0.1s ease; cursor: pointer; }
+  .bar-rect:hover { opacity: 0.8; }
+  .axis-label { fill: var(--text-muted); font-size: 10.5px; }
+  .grid-line { stroke: var(--gridline); stroke-width: 1; }
+  .baseline-line { stroke: var(--baseline); stroke-width: 1; }
+
+  .tooltip {
+    position: fixed; pointer-events: none; z-index: 50;
+    background: var(--text-primary); color: var(--surface-1);
+    font-size: 12px; padding: 6px 9px; border-radius: 6px; display: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+  .tooltip .tt-value { font-weight: 700; }
+  .tooltip .tt-label { color: var(--text-muted); margin-top: 1px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--gridline); white-space: nowrap; }
+  th { color: var(--text-secondary); font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface-1); }
+  th:hover { color: var(--text-primary); }
+  th .arrow { font-size: 10px; margin-left: 3px; color: var(--text-muted); }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  .table-scroll { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+
+  .tier-badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #fff; }
+  .tier-HIGH { background: var(--status-critical); }
+  .tier-MEDIUM { background: var(--status-warning); color: #3a2c00; }
+  .tier-LOW { background: var(--status-good); }
+
+  .empty-state { padding: 24px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+  .error-banner {
+    background: rgba(208,59,59,0.1); border: 1px solid var(--status-critical);
+    color: var(--status-critical); border-radius: 8px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 16px;
+  }
+  footer { color: var(--text-muted); font-size: 11.5px; margin-top: 8px; }
+</style>
+</head>
+<body class="viz-root">
+
+  <h1>Qatar Refund Fraud Signals</h1>
+  <p class="subtitle">Live against BigQuery &middot; scope: Qatar &middot; <span id="lastRefreshed">not loaded yet</span></p>
+
+  <div id="globalError"></div>
+
+  <div class="filter-row">
+    <span class="label">Date range</span>
+    <button class="pill" data-days="7">Last 7 days</button>
+    <button class="pill active" data-days="30">Last 30 days</button>
+    <button class="pill" data-days="90">Last 90 days</button>
+    <button class="pill" data-days="180">Last 180 days</button>
+    <span class="custom-days">
+      or custom <input type="number" id="customDays" min="1" max="365" placeholder="days"> days
+    </span>
+  </div>
+
+  <!-- Section 1: location-change -> delay -> refund -->
+  <div class="card" id="card-location">
+    <div class="card-head">
+      <div>
+        <h2>Location change &rarr; delay &rarr; refund</h2>
+        <p>Orders where the dropoff pin shifted materially between dispatch and actual delivery, the shift
+           coincided with a delivery delay, and the customer then filed a late-delivery / wrong-address
+           refund or compensation claim on that order.</p>
+      </div>
+      <button class="refresh-btn" id="refresh-location">Refresh</button>
+    </div>
+    <div class="controls">
+      <div class="control">
+        <label for="minShift">Min pin shift (meters)</label>
+        <input type="number" id="minShift" value="500" min="0" max="50000" step="50">
+      </div>
+      <div class="control">
+        <label for="minDelay">Min delay (minutes)</label>
+        <input type="number" id="minDelay" value="5" min="0" max="600" step="1">
+      </div>
+    </div>
+    <div class="stat-grid" id="stats-location"></div>
+    <div class="chart-wrap" id="chart-location"></div>
+    <div class="table-scroll">
+      <table id="table-location">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Section 2: repeat-offender risk score -->
+  <div class="card" id="card-risk">
+    <div class="card-head">
+      <div>
+        <h2>Repeat-offender risk score</h2>
+        <p>Customers ranked 0&ndash;100 on trailing refund/compensation claim frequency + EUR value,
+           across all claim reasons, tiered LOW / MEDIUM / HIGH.</p>
+      </div>
+      <button class="refresh-btn" id="refresh-risk">Refresh</button>
+    </div>
+    <div class="controls">
+      <div class="control">
+        <label for="minClaims">Min claims to qualify</label>
+        <input type="number" id="minClaims" value="3" min="1" max="1000" step="1">
+      </div>
+      <div class="control">
+        <label>Risk tiers shown</label>
+        <div class="checkbox-group">
+          <label><input type="checkbox" class="tier-toggle" value="HIGH" checked> HIGH</label>
+          <label><input type="checkbox" class="tier-toggle" value="MEDIUM" checked> MEDIUM</label>
+          <label><input type="checkbox" class="tier-toggle" value="LOW" checked> LOW</label>
+        </div>
+      </div>
+    </div>
+    <div class="stat-grid" id="stats-risk"></div>
+    <div class="chart-wrap" id="chart-risk"></div>
+    <div class="table-scroll">
+      <table id="table-risk">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    Source: fulfillment-dwh-production.curated_data_shared (orders, comp_and_refund_events). Billing project: tlb-data-dev.
+    Each refresh runs a live BigQuery scan &mdash; use the toggles deliberately rather than on every keystroke.
+  </footer>
+
+  <div class="tooltip" id="tooltip"><div class="tt-value" id="tt-value"></div><div class="tt-label" id="tt-label"></div></div>
+
+<script>
+  var state = {
+    daysBack: 30,
+    location: { rows: [], sortKey: 'customer_pattern_claim_count', sortDir: 'desc' },
+    risk: { rows: [], sortKey: 'risk_score_0_100', sortDir: 'desc' }
+  };
+
+  function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+
+  function formatCompact(n) {
+    if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return String(Math.round(n));
+  }
+  function formatEUR(n) { return '€' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }); }
+  function formatNum(n, d) { return n.toLocaleString(undefined, { maximumFractionDigits: d || 0 }); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+  function setLoading(cardId, loading) {
+    document.getElementById(cardId).classList.toggle('is-loading', loading);
+  }
+  function showError(msg) {
+    document.getElementById('globalError').innerHTML =
+      '<div class="error-banner">' + esc(msg) + '</div>';
+  }
+  function clearError() { document.getElementById('globalError').innerHTML = ''; }
+  function touchRefreshedStamp() {
+    document.getElementById('lastRefreshed').textContent = 'refreshed ' + new Date().toLocaleTimeString();
+  }
+
+  /* ---------- date range pills ---------- */
+  document.querySelectorAll('.pill[data-days]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.pill[data-days]').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('customDays').value = '';
+      state.daysBack = Number(btn.dataset.days);
+      loadLocationData();
+      loadRiskData();
+    });
+  });
+  document.getElementById('customDays').addEventListener('change', function (e) {
+    var v = Number(e.target.value);
+    if (!v || v < 1) return;
+    document.querySelectorAll('.pill[data-days]').forEach(function (b) { b.classList.remove('active'); });
+    state.daysBack = v;
+    loadLocationData();
+    loadRiskData();
+  });
+
+  /* ---------- section 1 controls ---------- */
+  ['minShift', 'minDelay'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', loadLocationData);
+  });
+  document.getElementById('refresh-location').addEventListener('click', loadLocationData);
+
+  function loadLocationData() {
+    setLoading('card-location', true);
+    clearError();
+    var opts = {
+      daysBack: state.daysBack,
+      minShiftMeters: Number(document.getElementById('minShift').value) || 0,
+      minDelaySeconds: (Number(document.getElementById('minDelay').value) || 0) * 60
+    };
+    google.script.run
+      .withSuccessHandler(function (result) {
+        state.location.rows = result.rows.map(function (r) {
+          return Object.assign({}, r, {
+            dropoff_shift_meters: num(r.dropoff_shift_meters),
+            delivery_delay_seconds: num(r.delivery_delay_seconds),
+            claim_value_eur: num(r.claim_value_eur),
+            csat_score: r.csat_score == null ? null : num(r.csat_score),
+            customer_pattern_claim_count: num(r.customer_pattern_claim_count),
+            customer_pattern_total_value_eur: num(r.customer_pattern_total_value_eur)
+          });
+        });
+        renderLocationSection();
+        setLoading('card-location', false);
+        touchRefreshedStamp();
+      })
+      .withFailureHandler(function (err) {
+        setLoading('card-location', false);
+        showError('Location-change query failed: ' + (err && err.message ? err.message : err));
+      })
+      .getLocationChangeData(opts);
+  }
+
+  function renderLocationSection() {
+    var rows = state.location.rows;
+    var distinctCustomers = new Set(rows.map(function (r) { return r.customer_id; })).size;
+    var distinctOrders = new Set(rows.map(function (r) { return r.order_id; })).size;
+    var totalValue = rows.reduce(function (s, r) { return s + r.claim_value_eur; }, 0);
+    var repeatCustomers = new Set(rows.filter(function (r) { return r.customer_pattern_claim_count >= 2; })
+      .map(function (r) { return r.customer_id; })).size;
+
+    document.getElementById('stats-location').innerHTML = [
+      statTile('Flagged claims', formatCompact(rows.length)),
+      statTile('Distinct customers', formatCompact(distinctCustomers)),
+      statTile('Distinct orders', formatCompact(distinctOrders)),
+      statTile('Value at risk', '€' + formatCompact(totalValue)),
+      statTile('Repeat customers (2+)', formatCompact(repeatCustomers))
+    ].join('');
+
+    renderWeeklyTrendChart(rows);
+    renderLocationTable();
+  }
+
+  function renderWeeklyTrendChart(rows) {
+    var byWeek = {};
+    rows.forEach(function (r) {
+      if (!r.order_date) return;
+      var d = new Date(r.order_date + 'T00:00:00Z');
+      var day = d.getUTCDay();
+      var weekStart = new Date(d);
+      weekStart.setUTCDate(d.getUTCDate() - day);
+      var key = weekStart.toISOString().slice(0, 10);
+      byWeek[key] = (byWeek[key] || 0) + 1;
+    });
+    var weeks = Object.keys(byWeek).sort();
+    var data = weeks.map(function (w) { return { label: w, value: byWeek[w] }; });
+    renderBarChart(document.getElementById('chart-location'), data, {
+      color: 'var(--series-1)', title: 'Flagged claims by week', valueFmt: function (v) { return formatNum(v); }
+    });
+  }
+
+  var LOCATION_COLUMNS = [
+    { key: 'customer_id', label: 'Customer' },
+    { key: 'order_id', label: 'Order' },
+    { key: 'order_date', label: 'Order date' },
+    { key: 'dropoff_shift_meters', label: 'Pin shift (m)', num: true },
+    { key: 'delivery_delay_seconds', label: 'Delay (min)', num: true, transform: function (v) { return (v / 60).toFixed(1); } },
+    { key: 'contact_reason_l3', label: 'Claim reason' },
+    { key: 'request_type', label: 'Request type' },
+    { key: 'claim_value_eur', label: 'Claim value (EUR)', num: true, transform: function (v) { return formatNum(v, 2); } },
+    { key: 'customer_pattern_claim_count', label: 'Repeats (customer)', num: true }
+  ];
+
+  function renderLocationTable() {
+    renderSortableTable('table-location', LOCATION_COLUMNS, state.location, renderLocationSection);
+  }
+
+  /* ---------- section 2 controls ---------- */
+  document.getElementById('minClaims').addEventListener('change', loadRiskData);
+  document.getElementById('refresh-risk').addEventListener('click', loadRiskData);
+  document.querySelectorAll('.tier-toggle').forEach(function (cb) {
+    cb.addEventListener('change', renderRiskSection);
+  });
+
+  function activeTiers() {
+    return Array.from(document.querySelectorAll('.tier-toggle:checked')).map(function (cb) { return cb.value; });
+  }
+
+  function loadRiskData() {
+    setLoading('card-risk', true);
+    clearError();
+    var opts = { daysBack: state.daysBack, minClaims: Number(document.getElementById('minClaims').value) || 1 };
+    google.script.run
+      .withSuccessHandler(function (result) {
+        state.risk.rows = result.rows.map(function (r) {
+          return Object.assign({}, r, {
+            claim_count: num(r.claim_count),
+            distinct_orders_claimed: num(r.distinct_orders_claimed),
+            distinct_vendors_claimed: num(r.distinct_vendors_claimed),
+            total_claim_value_eur: num(r.total_claim_value_eur),
+            manual_claim_count: num(r.manual_claim_count),
+            avg_csat_score: r.avg_csat_score == null ? null : num(r.avg_csat_score),
+            risk_score_0_100: num(r.risk_score_0_100)
+          });
+        });
+        renderRiskSection();
+        setLoading('card-risk', false);
+        touchRefreshedStamp();
+      })
+      .withFailureHandler(function (err) {
+        setLoading('card-risk', false);
+        showError('Risk-score query failed: ' + (err && err.message ? err.message : err));
+      })
+      .getRiskScoreData(opts);
+  }
+
+  function renderRiskSection() {
+    var tiers = activeTiers();
+    var rows = state.risk.rows.filter(function (r) { return tiers.indexOf(r.risk_tier) !== -1; });
+    var highCount = rows.filter(function (r) { return r.risk_tier === 'HIGH'; }).length;
+    var totalValue = rows.reduce(function (s, r) { return s + r.total_claim_value_eur; }, 0);
+    var avgClaims = rows.length ? rows.reduce(function (s, r) { return s + r.claim_count; }, 0) / rows.length : 0;
+
+    document.getElementById('stats-risk').innerHTML = [
+      statTile('Customers flagged', formatCompact(rows.length)),
+      statTile('HIGH tier', formatCompact(highCount)),
+      statTile('Total value claimed', '€' + formatCompact(totalValue)),
+      statTile('Avg claims / customer', avgClaims.toFixed(1))
+    ].join('');
+
+    var tierOrder = ['LOW', 'MEDIUM', 'HIGH'];
+    var tierColor = { LOW: 'var(--status-good)', MEDIUM: 'var(--status-warning)', HIGH: 'var(--status-critical)' };
+    var counts = { LOW: 0, MEDIUM: 0, HIGH: 0 };
+    rows.forEach(function (r) { if (counts[r.risk_tier] !== undefined) counts[r.risk_tier]++; });
+    var data = tierOrder.filter(function (t) { return tiers.indexOf(t) !== -1; })
+      .map(function (t) { return { label: t, value: counts[t], color: tierColor[t] }; });
+    renderBarChart(document.getElementById('chart-risk'), data, {
+      title: 'Flagged customers by risk tier', valueFmt: function (v) { return formatNum(v); }
+    });
+
+    state.risk._filteredForTable = rows;
+    renderRiskTable();
+  }
+
+  var RISK_COLUMNS = [
+    { key: 'customer_id', label: 'Customer' },
+    { key: 'risk_tier', label: 'Tier', render: function (v) { return '<span class="tier-badge tier-' + v + '">' + v + '</span>'; } },
+    { key: 'risk_score_0_100', label: 'Risk score', num: true },
+    { key: 'claim_count', label: 'Claims', num: true },
+    { key: 'distinct_orders_claimed', label: 'Distinct orders', num: true },
+    { key: 'total_claim_value_eur', label: 'Total value (EUR)', num: true, transform: function (v) { return formatNum(v, 2); } },
+    { key: 'first_claim_date', label: 'First claim' },
+    { key: 'last_claim_date', label: 'Last claim' }
+  ];
+
+  function renderRiskTable() {
+    var proxyState = { rows: state.risk._filteredForTable || [], sortKey: state.risk.sortKey, sortDir: state.risk.sortDir };
+    renderSortableTable('table-risk', RISK_COLUMNS, proxyState, function () {
+      state.risk.sortKey = proxyState.sortKey;
+      state.risk.sortDir = proxyState.sortDir;
+      renderRiskTable();
+    });
+  }
+
+  /* ---------- shared UI helpers ---------- */
+  function statTile(label, value) {
+    return '<div class="stat-tile"><div class="label">' + esc(label) + '</div><div class="value">' + esc(value) + '</div></div>';
+  }
+
+  function renderSortableTable(tableId, columns, sortState, onResort) {
+    var table = document.getElementById(tableId);
+    var thead = table.querySelector('thead');
+    var tbody = table.querySelector('tbody');
+
+    var rows = sortState.rows.slice().sort(function (a, b) {
+      var ka = a[sortState.sortKey], kb = b[sortState.sortKey];
+      if (typeof ka === 'number' && typeof kb === 'number') {
+        return sortState.sortDir === 'asc' ? ka - kb : kb - ka;
+      }
+      ka = String(ka == null ? '' : ka); kb = String(kb == null ? '' : kb);
+      return sortState.sortDir === 'asc' ? ka.localeCompare(kb) : kb.localeCompare(ka);
+    });
+
+    thead.innerHTML = '<tr>' + columns.map(function (c) {
+      var arrow = c.key === sortState.sortKey ? (sortState.sortDir === 'asc' ? '▲' : '▼') : '';
+      return '<th data-key="' + c.key + '">' + esc(c.label) + (arrow ? ' <span class="arrow">' + arrow + '</span>' : '') + '</th>';
+    }).join('') + '</tr>';
+
+    thead.querySelectorAll('th').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var key = th.dataset.key;
+        if (sortState.sortKey === key) sortState.sortDir = sortState.sortDir === 'asc' ? 'desc' : 'asc';
+        else { sortState.sortKey = key; sortState.sortDir = 'desc'; }
+        onResort();
+      });
+    });
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="' + columns.length + '"><div class="empty-state">No rows match the current toggles.</div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(function (r) {
+      return '<tr>' + columns.map(function (c) {
+        var v = r[c.key];
+        var display = c.render ? c.render(v) : esc(c.transform ? c.transform(v) : v);
+        return '<td class="' + (c.num ? 'num' : '') + '">' + display + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+  }
+
+  /* ---------- minimal SVG bar chart with hover tooltip ---------- */
+  function renderBarChart(container, data, opts) {
+    opts = opts || {};
+    container.innerHTML = '';
+    if (!data.length) {
+      container.innerHTML = '<div class="empty-state">No data for the current toggles.</div>';
+      return;
+    }
+    var W = 640, H = 200, padL = 36, padB = 26, padT = 12, padR = 12;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var maxVal = Math.max.apply(null, data.map(function (d) { return d.value; })) || 1;
+    var niceMax = maxVal <= 5 ? Math.ceil(maxVal) : Math.ceil(maxVal / Math.pow(10, String(Math.floor(maxVal)).length - 1)) * Math.pow(10, String(Math.floor(maxVal)).length - 1);
+    var barSlot = plotW / data.length;
+    var barWidth = Math.min(24, barSlot * 0.55);
+
+    var svgParts = [];
+    svgParts.push('<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(opts.title || 'chart') + '">');
+
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (t) {
+      var y = padT + plotH * (1 - t);
+      svgParts.push('<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '"></line>');
+      svgParts.push('<text class="axis-label" x="' + (padL - 6) + '" y="' + (y + 3) + '" text-anchor="end">' + formatCompact(niceMax * t) + '</text>');
+    });
+
+    data.forEach(function (d, i) {
+      var x = padL + i * barSlot + (barSlot - barWidth) / 2;
+      var h = niceMax > 0 ? (d.value / niceMax) * plotH : 0;
+      var y = padT + plotH - h;
+      var color = d.color || opts.color || 'var(--series-1)';
+      svgParts.push('<rect class="bar-rect" data-label="' + esc(d.label) + '" data-value="' + d.value + '" x="' + x + '" y="' + y +
+        '" width="' + barWidth + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + color + '"></rect>');
+      var isoDate = /^\d{4}-\d{2}-\d{2}$/.test(d.label);
+      svgParts.push('<text class="axis-label" x="' + (x + barWidth / 2) + '" y="' + (H - padB + 14) + '" text-anchor="middle">' + esc(isoDate ? d.label.slice(5) : d.label) + '</text>');
+    });
+
+    svgParts.push('<line class="baseline-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '"></line>');
+    svgParts.push('</svg>');
+    container.innerHTML = svgParts.join('');
+
+    var tooltip = document.getElementById('tooltip');
+    container.querySelectorAll('.bar-rect').forEach(function (rect) {
+      rect.addEventListener('pointermove', function (e) {
+        document.getElementById('tt-value').textContent = (opts.valueFmt ? opts.valueFmt(Number(rect.dataset.value)) : rect.dataset.value);
+        document.getElementById('tt-label').textContent = rect.dataset.label;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 12) + 'px';
+        tooltip.style.top = (e.clientY + 12) + 'px';
+      });
+      rect.addEventListener('pointerleave', function () { tooltip.style.display = 'none'; });
+    });
+  }
+
+  /* ---------- initial load ---------- */
+  loadLocationData();
+  loadRiskData();
+</script>
+</body>
+</html>
