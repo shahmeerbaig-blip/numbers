@@ -131,26 +131,30 @@ function resolveAnalyticalIds_(rawIds) {
   numericIds = Array.from(new Set(numericIds));
   if (!numericIds.length) return {};
 
+  // Built as a literal IN (...) list rather than a bound ARRAY<INT64> query
+  // parameter. Every element of idList is guaranteed a clean JS integer by
+  // the isFinite/Math.trunc/round-trip check above, so .join(',') can only
+  // ever produce digits, minus signs, and commas - there is no string data
+  // here that could carry an injection payload. This sidesteps a BigQuery
+  // Advanced Service quirk where ARRAY-typed query parameters were silently
+  // matching zero rows instead of erroring, which is worth knowing about if
+  // you build another parameterized array elsewhere in this file.
+  var idList = numericIds.join(',');
   var sql = [
     'WITH ranked AS (',
     '  SELECT account_id, analytical_customer_id,',
     '    ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY valid_from DESC) AS rn',
     '  FROM `tlb-data-prod.data_platform.rltnp_account_x_identifiers`',
-    '  WHERE account_id IN UNNEST(@ids)',
+    '  WHERE account_id IN (' + idList + ')',
     ')',
     'SELECT account_id, analytical_customer_id FROM ranked WHERE rn = 1'
   ].join('\n');
 
-  var params = [{
-    name: 'ids',
-    parameterType: { type: 'ARRAY', arrayType: { type: 'INT64' } },
-    parameterValue: { arrayValues: numericIds.map(function (n) { return { value: String(n) }; }) }
-  }];
-
   var map = {};
-  runQuery_(sql, params).forEach(function (r) {
+  runQuery_(sql, []).forEach(function (r) {
     if (r.analytical_customer_id) map[String(r.account_id)] = r.analytical_customer_id;
   });
+  Logger.log('resolveAnalyticalIds_: requested %s ids, resolved %s', numericIds.length, Object.keys(map).length);
   return map;
 }
 
