@@ -287,7 +287,11 @@
           <p class="how-body">For each customer with at least the minimum claim count, ranks them by percentile
             on claim count and percentile on total EUR claimed, blends the two 50/50 into a 0&ndash;100 score,
             and tiers HIGH (&ge;90), MEDIUM (&ge;70), LOW (below). Deliberately a transparent, reviewable blend
-            rather than a black-box model.</p>
+            rather than a black-box model. The score counts every claim reason equally, including
+            partner/vendor-initiated cancellations &mdash; which aren't the customer's fault the way a
+            self-reported missing/wrong-item claim is. The "Item claims" and "Cancellation claims" columns
+            split each customer's count/value so you can see which is actually driving a high score before
+            acting on it.</p>
         </details>
       </div>
       <div class="btn-row">
@@ -457,6 +461,10 @@
       '<button class="copy-btn" data-copy="' + esc(rawId) + '" title="Copy raw ID">&#10697;</button>' +
       '<span><span class="acid unresolved">' + esc(rawId) + '</span><span class="raw-id">analytical ID unresolved</span></span>' +
       '</div>';
+  }
+
+  function splitCell(count, valueEur) {
+    return '<span><span class="acid">' + esc(formatNum(count)) + '</span><span class="raw-id">€' + esc(formatNum(valueEur, 2)) + '</span></span>';
   }
 
   function wireCopyButtons(container) {
@@ -630,6 +638,10 @@
             distinct_vendors_claimed: num(r.distinct_vendors_claimed),
             total_claim_value_eur: num(r.total_claim_value_eur),
             manual_claim_count: num(r.manual_claim_count),
+            cancellation_claim_count: num(r.cancellation_claim_count),
+            item_claim_count: num(r.item_claim_count),
+            cancellation_claim_value_eur: num(r.cancellation_claim_value_eur),
+            item_claim_value_eur: num(r.item_claim_value_eur),
             avg_csat_score: r.avg_csat_score == null ? null : num(r.avg_csat_score),
             risk_score_0_100: num(r.risk_score_0_100)
           });
@@ -652,12 +664,16 @@
     var highCount = rows.filter(function (r) { return r.risk_tier === 'HIGH'; }).length;
     var totalValue = rows.reduce(function (s, r) { return s + r.total_claim_value_eur; }, 0);
     var avgClaims = rows.length ? rows.reduce(function (s, r) { return s + r.claim_count; }, 0) / rows.length : 0;
+    var totalClaims = rows.reduce(function (s, r) { return s + r.claim_count; }, 0);
+    var totalCancellations = rows.reduce(function (s, r) { return s + r.cancellation_claim_count; }, 0);
+    var cancellationShare = totalClaims ? (totalCancellations / totalClaims * 100) : 0;
 
     document.getElementById('stats-risk').innerHTML = [
       statTile('Customers flagged', formatCompact(rows.length)),
       statTile('HIGH tier', formatCompact(highCount)),
       statTile('Total value claimed', '€' + formatCompact(totalValue)),
-      statTile('Avg claims / customer', avgClaims.toFixed(1))
+      statTile('Avg claims / customer', avgClaims.toFixed(1)),
+      statTile('Cancellation-driven share', cancellationShare.toFixed(0) + '%')
     ].join('');
 
     var tierOrder = ['LOW', 'MEDIUM', 'HIGH'];
@@ -683,6 +699,10 @@
     { key: 'claim_count', label: 'Claims', num: true },
     { key: 'distinct_orders_claimed', label: 'Distinct orders', num: true },
     { key: 'total_claim_value_eur', label: 'Total value (EUR)', num: true, transform: function (v) { return formatNum(v, 2); } },
+    { key: 'item_claim_count', label: 'Item claims (€)', num: true, render: function (v, r) { return splitCell(r.item_claim_count, r.item_claim_value_eur); },
+      csvValue: function (r) { return r.item_claim_count + ' (€' + formatNum(r.item_claim_value_eur, 2) + ')'; } },
+    { key: 'cancellation_claim_count', label: 'Cancellation claims (€)', num: true, render: function (v, r) { return splitCell(r.cancellation_claim_count, r.cancellation_claim_value_eur); },
+      csvValue: function (r) { return r.cancellation_claim_count + ' (€' + formatNum(r.cancellation_claim_value_eur, 2) + ')'; } },
     { key: 'first_claim_date', label: 'First claim' },
     { key: 'last_claim_date', label: 'Last claim' }
   ];

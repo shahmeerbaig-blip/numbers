@@ -250,6 +250,15 @@ function getLocationChangeData(opts) {
 /**
  * Pattern 2: repeat-offender risk score — 0-100 blend of trailing claim
  * frequency + EUR value, tiered LOW/MEDIUM/HIGH. Toggles: date range, min claims.
+ *
+ * The score itself still counts every comp_and_refund_events reason equally
+ * (cancellations and item-level claims alike) - confirmed via a real case
+ * that this can be dominated by partner/vendor-initiated cancellations,
+ * which aren't a customer fraud signal the same way a self-reported
+ * missing/wrong item claim is. Rather than silently drop cancellations from
+ * the score, every row also reports cancellation_claim_count/value alongside
+ * item_claim_count/value so a reviewer can see the split before acting on a
+ * high score driven mostly by cancellations.
  */
 function getRiskScoreData(opts) {
   opts = opts || {};
@@ -265,6 +274,8 @@ function getRiskScoreData(opts) {
     '    COUNT(DISTINCT vendor_id) AS distinct_vendors_claimed,',
     '    SUM(COALESCE(compensation_value_eur, 0) + COALESCE(refund_value_eur, 0)) AS total_claim_value_eur,',
     '    COUNTIF(request_type = \'Manual\') AS manual_claim_count,',
+    '    COUNTIF(contact_reason_l2 = \'Cancellation\') AS cancellation_claim_count,',
+    '    SUM(IF(contact_reason_l2 = \'Cancellation\', COALESCE(compensation_value_eur, 0) + COALESCE(refund_value_eur, 0), 0)) AS cancellation_claim_value_eur,',
     '    ROUND(AVG(csat_score), 2) AS avg_csat_score,',
     '    MIN(created_date) AS first_claim_date,',
     '    MAX(created_date) AS last_claim_date',
@@ -283,6 +294,10 @@ function getRiskScoreData(opts) {
     'SELECT',
     '  customer_id, claim_count, distinct_orders_claimed, distinct_vendors_claimed,',
     '  ROUND(total_claim_value_eur, 2) AS total_claim_value_eur, manual_claim_count, avg_csat_score,',
+    '  cancellation_claim_count,',
+    '  claim_count - cancellation_claim_count AS item_claim_count,',
+    '  ROUND(cancellation_claim_value_eur, 2) AS cancellation_claim_value_eur,',
+    '  ROUND(total_claim_value_eur - cancellation_claim_value_eur, 2) AS item_claim_value_eur,',
     '  first_claim_date, last_claim_date,',
     '  ROUND(50 * claim_count_pctile + 50 * claim_value_pctile, 1) AS risk_score_0_100,',
     '  CASE',
