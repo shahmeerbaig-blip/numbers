@@ -1,18 +1,35 @@
 /**
  * Qatar Refund Fraud Signals — Apps Script backend.
  *
- * Runs the two SQL rules from location_change_delay_refund_pattern.sql and
- * customer_repeat_refund_risk_score.sql live against BigQuery, on demand,
- * with the thresholds below exposed as dashboard toggles.
+ * Runs three rules live against BigQuery, on demand, with the thresholds
+ * below exposed as dashboard toggles. Every query already filters down to
+ * flagged/violating rows only — none of them pull the full customer or
+ * order base.
+ *
+ *   1. Location change -> delay -> refund   (location_change_delay_refund_pattern.sql)
+ *   2. Repeat-offender risk score           (customer_repeat_refund_risk_score.sql)
+ *   3. Fraud network (new)                  active accounts already linked, by
+ *      device/mobile number, to a Shield-confirmed fraud account but not yet
+ *      blocked. This replaces an earlier idea of matching customers by shared
+ *      dropoff GPS coordinates: that was tested directly against BigQuery and
+ *      found too noisy in a dense city (46,935 "shared address" matches over
+ *      180 days in Qatar alone, almost all from apartment buildings, not
+ *      fraud). Shield's own device/mobile-number network linkage
+ *      (agg_customer_braze_fraud_flag.network_shield_fraud_account_count) is
+ *      the accurate version of "this is the same person on a new account."
+ *
+ * Every row is also enriched with the customer's analytical_customer_id
+ * (Talabat's standard cross-system customer key, resolved via
+ * rltnp_account_x_identifiers) so results are ready to hand to a block
+ * request without a manual lookup step.
  *
  * SETUP (one-time, see README.md in this folder for the full walkthrough):
  *   1. Resources > Advanced Google services > enable "BigQuery API" (or add
  *      it via appsscript.json — see the manifest checked in alongside this file).
  *   2. The Google account that opens the deployed web app needs:
  *      - BigQuery jobUser (or equivalent) on BILLING_PROJECT below
- *      - Read access to fulfillment-dwh-production.curated_data_shared
- *      This mirrors the access already confirmed for tlb-data-dev when these
- *      two SQL files were built and validated.
+ *      - Read access to fulfillment-dwh-production.curated_data_shared and
+ *        tlb-data-prod.data_platform
  *   3. Deploy > New deployment > Web app. Execute as "User accessing the web
  *      app" so BigQuery runs under each viewer's own credentials/quota.
  */
@@ -81,6 +98,7 @@ function runQuery_(sql, params) {
     pageToken = next.pageToken;
   }
 
+  if (!result.schema) return [];
   var fields = result.schema.fields;
   return rows.map(function (row) {
     var obj = {};
@@ -89,6 +107,61 @@ function runQuery_(sql, params) {
     });
     return obj;
   });
+}
+
+/**
+ * Resolves Talabat's standard analytical_customer_id for a list of raw
+ * numeric customer/account IDs, via the current (latest valid_from) row per
+ * account_id in rltnp_account_x_identifiers. IDs that aren't numeric (~0.8%
+ * of comp_and_refund_events rows, from non-Hurrier source systems) or that
+ * don't resolve (~7-9%, mostly very new accounts) are simply omitted from
+ * the returned map — callers fall back to the raw ID for those.
+ *
+ * Note: this table is 750M+ rows clustered on valid_to/valid_from, not
+ * account_id, so this lookup scans ~25-30GB regardless of how few IDs are
+ * requested. That's an accepted, deliberate cost for shipping a block-ready
+ * ID rather than an internal-only one — see README.md.
+ */
+function resolveAnalyticalIds_(rawIds) {
+  var numericIds = [];
+  rawIds.forEach(function (id) {
+    var n = Number(id);
+    if (id != null && isFinite(n) && String(Math.trunc(n)) === String(id).trim()) numericIds.push(Math.trunc(n));
+  });
+  numericIds = Array.from(new Set(numericIds));
+  if (!numericIds.length) return {};
+
+  var sql = [
+    'WITH ranked AS (',
+    '  SELECT account_id, analytical_customer_id,',
+    '    ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY valid_from DESC) AS rn',
+    '  FROM `tlb-data-prod.data_platform.rltnp_account_x_identifiers`',
+    '  WHERE account_id IN UNNEST(@ids)',
+    ')',
+    'SELECT account_id, analytical_customer_id FROM ranked WHERE rn = 1'
+  ].join('\n');
+
+  var params = [{
+    name: 'ids',
+    parameterType: { type: 'ARRAY', arrayType: { type: 'INT64' } },
+    parameterValue: { arrayValues: numericIds.map(function (n) { return { value: String(n) }; }) }
+  }];
+
+  var map = {};
+  runQuery_(sql, params).forEach(function (r) {
+    if (r.analytical_customer_id) map[String(r.account_id)] = r.analytical_customer_id;
+  });
+  return map;
+}
+
+/** Attaches analytical_customer_id (or null) to every row, keyed off `idField`. */
+function attachAnalyticalIds_(rows, idField) {
+  var ids = rows.map(function (r) { return r[idField]; });
+  var map = resolveAnalyticalIds_(ids);
+  rows.forEach(function (r) {
+    r.analytical_customer_id = map[String(r[idField])] || null;
+  });
+  return rows;
 }
 
 /**
@@ -162,8 +235,10 @@ function getLocationChangeData(opts) {
     }
   ];
 
+  var rows = attachAnalyticalIds_(runQuery_(sql, params), 'customer_id');
+
   return {
-    rows: runQuery_(sql, params),
+    rows: rows,
     appliedFilters: { daysBack: daysBack, minShiftMeters: minShiftMeters, minDelaySeconds: minDelaySeconds }
   };
 }
@@ -221,8 +296,45 @@ function getRiskScoreData(opts) {
     intParam_('min_claims', minClaims)
   ];
 
+  var rows = attachAnalyticalIds_(runQuery_(sql, params), 'customer_id');
+
   return {
-    rows: runQuery_(sql, params),
+    rows: rows,
     appliedFilters: { daysBack: daysBack, minClaims: minClaims }
+  };
+}
+
+/**
+ * Pattern 3 (new): active (not yet blocked) Qatar accounts that Shield has
+ * already linked, by shared device or mobile number, to at least one
+ * confirmed-fraud account. These are the highest-confidence "same person,
+ * new account" candidates — ban-evasion, not coincidence — sourced directly
+ * from Shield's own network computation rather than a location heuristic.
+ * Toggle: min linked fraud accounts.
+ */
+function getFraudNetworkData(opts) {
+  opts = opts || {};
+  var minLinkedFraud = clamp_(opts.minLinkedFraud, 1, 1, 500);
+
+  var sql = [
+    'SELECT',
+    '  account_id, network_size, network_shield_fraud_account_count,',
+    '  network_shield_voucher_fraud_account_count, network_voucher_order_share,',
+    '  network_organic_order_share, is_shield_fraud, is_shield_voucher_fraud,',
+    '  is_device_rooted, is_app_cloned',
+    'FROM `tlb-data-prod.data_platform.agg_customer_braze_fraud_flag`',
+    'WHERE country_code = \'QA\'',
+    '  AND NOT IFNULL(is_blocked, FALSE)',
+    '  AND network_shield_fraud_account_count >= @min_linked_fraud',
+    'ORDER BY network_shield_fraud_account_count DESC, network_size DESC'
+  ].join('\n');
+
+  var params = [intParam_('min_linked_fraud', minLinkedFraud)];
+
+  var rows = attachAnalyticalIds_(runQuery_(sql, params), 'account_id');
+
+  return {
+    rows: rows,
+    appliedFilters: { minLinkedFraud: minLinkedFraud }
   };
 }

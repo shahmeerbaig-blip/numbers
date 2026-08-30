@@ -3,34 +3,42 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;800;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   .viz-root {
     color-scheme: light;
-    --surface-1:      #fcfcfb;
-    --page:           #f9f9f7;
-    --text-primary:   #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted:     #898781;
-    --gridline:       #e1e0d9;
-    --baseline:       #c3c2b7;
-    --border:         rgba(11,11,11,0.10);
-    --series-1:       #2a78d6; /* categorical slot 1 - blue, trend chart */
-    --status-good:    #0ca30c; /* LOW risk */
-    --status-warning: #fab219; /* MEDIUM risk */
-    --status-critical:#d03b3b; /* HIGH risk */
+    --page:            #f4ede3;   /* talabat cream */
+    --surface-1:       #ffffff;
+    --text-primary:    #2c1416;   /* near-burgundy, body-friendly */
+    --text-heading:    #411517;   /* talabat burgundy */
+    --text-secondary:  #6b5f59;
+    --text-muted:      #948a83;
+    --gridline:        #ece3d6;
+    --baseline:        #d8cabb;
+    --border:          rgba(65,21,23,0.12);
+    --accent:          #ff5900;   /* talabat orange */
+    --accent-ink:      #ffffff;
+    --accent-wash:     rgba(255,89,0,0.10);
+    --status-good:     #0ca30c;
+    --status-warning:  #fab219;
+    --status-critical: #d03b3b;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) .viz-root {
       color-scheme: dark;
-      --surface-1:      #1a1a19;
-      --page:           #0d0d0d;
-      --text-primary:   #ffffff;
-      --text-secondary: #c3c2b7;
-      --text-muted:     #898781;
-      --gridline:       #2c2c2a;
-      --baseline:       #383835;
-      --border:         rgba(255,255,255,0.10);
-      --series-1:       #3987e5;
+      --page:            #17100e;
+      --surface-1:       #241a17;
+      --text-primary:    #f4ede3;
+      --text-heading:    #ffb37a;
+      --text-secondary:  #cdbdb3;
+      --text-muted:      #9c8d84;
+      --gridline:        #3a2b26;
+      --baseline:        #52403a;
+      --border:          rgba(255,255,255,0.12);
+      --accent:          #ff7a33;
+      --accent-ink:      #1a1008;
+      --accent-wash:     rgba(255,122,51,0.16);
     }
   }
 
@@ -39,90 +47,150 @@
     margin: 0; padding: 0;
     background: var(--page);
     color: var(--text-primary);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  body { padding: 20px 24px 48px; }
+  body { padding: 0 24px 56px; }
 
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 20px; }
+  h1, h2 { font-family: "Poppins", "DM Sans", sans-serif; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 18px 0 6px;
+  }
+  .brand-mark {
+    width: 10px; height: 10px; border-radius: 3px; background: var(--accent);
+  }
+  .brand-word {
+    font-family: "Poppins", sans-serif; font-weight: 900; font-size: 18px;
+    color: var(--accent); letter-spacing: -0.02em; text-transform: lowercase;
+  }
+  .brand-sep { color: var(--border); }
+  .topbar .app-name { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+
+  h1 { font-weight: 800; font-size: 21px; margin: 6px 0 4px; color: var(--text-heading); }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 18px; }
+  .subtitle .dot { margin: 0 6px; color: var(--border); }
 
   .filter-row {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     background: var(--surface-1); border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
     border-radius: 10px; padding: 10px 14px; margin-bottom: 20px;
   }
-  .filter-row .label { font-size: 12px; color: var(--text-secondary); margin-right: 4px; }
+  .filter-row .label { font-size: 12px; color: var(--text-secondary); margin-right: 4px; font-weight: 500; }
   .pill {
     border: 1px solid var(--border); background: transparent; color: var(--text-primary);
-    border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+    border-radius: 999px; padding: 6px 13px; font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: background 0.12s ease, border-color 0.12s ease;
   }
-  .pill:hover { background: rgba(128,128,128,0.10); }
-  .pill.active { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+  .pill:hover { background: var(--accent-wash); border-color: var(--accent); }
+  .pill.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
   .pill.active::before { content: "\2713"; margin-right: 6px; font-weight: 700; }
   .custom-days { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
-  .custom-days input { width: 64px; }
+  .custom-days input { width: 60px; }
 
   input[type="number"], input[type="text"] {
-    background: var(--surface-1); color: var(--text-primary);
+    background: var(--surface-1); color: var(--text-primary); font-family: inherit;
     border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 13px;
+  }
+  input[type="number"]:focus, input[type="text"]:focus, .pill:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
   }
 
   .card {
     background: var(--surface-1); border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;
+    border-radius: 14px; padding: 18px 20px; margin-bottom: 24px;
     transition: opacity 0.15s ease;
   }
   .card.is-loading { opacity: 0.55; pointer-events: none; }
 
-  .card-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
-  .card-head h2 { font-size: 16px; margin: 0 0 4px; }
-  .card-head p { font-size: 12.5px; color: var(--text-secondary); margin: 0; max-width: 640px; }
-
-  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
-  .control { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-secondary); }
-  .checkbox-group { display: flex; gap: 10px; align-items: center; }
-  .checkbox-group label { display: flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--text-primary); cursor: pointer; }
-
-  .refresh-btn {
-    border: 1px solid var(--border); background: transparent; color: var(--text-primary);
-    border-radius: 6px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; align-self: flex-end;
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; }
+  .card-head .eyebrow {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 4px;
   }
-  .refresh-btn:hover { background: rgba(128,128,128,0.10); }
+  .card-head h2 { font-size: 17px; margin: 0 0 4px; color: var(--text-heading); font-weight: 800; }
+  .card-head p { font-size: 12.5px; color: var(--text-secondary); margin: 0; max-width: 660px; }
+
+  details.how { margin: 8px 0 4px; }
+  details.how summary {
+    font-size: 11.5px; color: var(--accent); cursor: pointer; font-weight: 600; list-style: none;
+  }
+  details.how summary::-webkit-details-marker { display: none; }
+  details.how summary::before { content: "\25B8  "; }
+  details.how[open] summary::before { content: "\25BE  "; }
+  details.how .how-body { font-size: 12px; color: var(--text-secondary); margin: 6px 0 0; line-height: 1.5; }
+
+  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px; }
+  .control { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-secondary); font-weight: 500; }
+  .checkbox-group { display: flex; gap: 10px; align-items: center; }
+  .checkbox-group label { display: flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--text-primary); cursor: pointer; font-weight: 400; }
+
+  .btn {
+    border: 1px solid var(--border); background: transparent; color: var(--text-primary);
+    border-radius: 7px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .btn:hover { background: var(--accent-wash); border-color: var(--accent); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn.btn-primary:hover { filter: brightness(1.05); }
+  .btn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
   .stat-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 12px; margin: 16px 0;
   }
-  .stat-tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .stat-tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--page); }
   .stat-tile .label { font-size: 11px; color: var(--text-secondary); }
-  .stat-tile .value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .stat-tile .value { font-size: 22px; font-weight: 700; margin-top: 2px; font-family: "Poppins", sans-serif; color: var(--text-heading); }
 
   .chart-wrap { margin: 18px 0 10px; }
   .chart-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
   .bar-rect { transition: opacity 0.1s ease; cursor: pointer; }
-  .bar-rect:hover { opacity: 0.8; }
-  .axis-label { fill: var(--text-muted); font-size: 10.5px; }
+  .bar-rect:hover { opacity: 0.82; }
+  .axis-label { fill: var(--text-muted); font-size: 10.5px; font-family: "DM Sans", sans-serif; }
   .grid-line { stroke: var(--gridline); stroke-width: 1; }
   .baseline-line { stroke: var(--baseline); stroke-width: 1; }
 
   .tooltip {
     position: fixed; pointer-events: none; z-index: 50;
-    background: var(--text-primary); color: var(--surface-1);
+    background: var(--text-heading); color: #fff;
     font-size: 12px; padding: 6px 9px; border-radius: 6px; display: none;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.25);
   }
   .tooltip .tt-value { font-weight: 700; }
-  .tooltip .tt-label { color: var(--text-muted); margin-top: 1px; }
+  .tooltip .tt-label { color: #e8d9d9; margin-top: 1px; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(0);
+    background: var(--text-heading); color: #fff; padding: 9px 16px; border-radius: 999px;
+    font-size: 12.5px; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
 
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
   th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--gridline); white-space: nowrap; }
   th { color: var(--text-secondary); font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface-1); }
-  th:hover { color: var(--text-primary); }
-  th .arrow { font-size: 10px; margin-left: 3px; color: var(--text-muted); }
+  th:hover { color: var(--text-heading); }
+  th .arrow { font-size: 10px; margin-left: 3px; color: var(--accent); }
   td.num { font-variant-numeric: tabular-nums; text-align: right; }
-  .table-scroll { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  tbody tr:hover td { background: var(--accent-wash); }
+  .table-scroll { max-height: 440px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+  th.chk-col, td.chk-col { width: 28px; padding-left: 10px; }
 
-  .tier-badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #fff; }
+  .id-cell { display: flex; align-items: center; gap: 6px; }
+  .id-cell .acid { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .id-cell .raw-id { display: block; font-size: 10px; color: var(--text-muted); font-weight: 400; }
+  .id-cell .acid.unresolved { color: var(--text-secondary); font-style: italic; font-weight: 500; }
+  .copy-btn {
+    border: 1px solid var(--border); background: var(--page); color: var(--text-secondary);
+    border-radius: 5px; width: 20px; height: 20px; font-size: 11px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .tier-badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; }
   .tier-HIGH { background: var(--status-critical); }
   .tier-MEDIUM { background: var(--status-warning); color: #3a2c00; }
   .tier-LOW { background: var(--status-good); }
@@ -132,18 +200,26 @@
     background: rgba(208,59,59,0.1); border: 1px solid var(--status-critical);
     color: var(--status-critical); border-radius: 8px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 16px;
   }
-  footer { color: var(--text-muted); font-size: 11.5px; margin-top: 8px; }
+  footer { color: var(--text-muted); font-size: 11.5px; margin-top: 8px; line-height: 1.6; }
+  footer a { color: var(--accent); }
 </style>
 </head>
 <body class="viz-root">
 
-  <h1>Qatar Refund Fraud Signals</h1>
-  <p class="subtitle">Live against BigQuery &middot; scope: Qatar &middot; <span id="lastRefreshed">not loaded yet</span></p>
+  <div class="topbar">
+    <span class="brand-mark"></span>
+    <span class="brand-word">talabat</span>
+    <span class="brand-sep">/</span>
+    <span class="app-name">Trust &amp; Safety</span>
+  </div>
+
+  <h1>Refund &amp; Fraud Signals &mdash; Qatar</h1>
+  <p class="subtitle">Live against BigQuery<span class="dot">&middot;</span>scope: Qatar<span class="dot">&middot;</span>every table below already shows flagged violators only, never the full customer base<span class="dot">&middot;</span><span id="lastRefreshed">not loaded yet</span></p>
 
   <div id="globalError"></div>
 
   <div class="filter-row">
-    <span class="label">Date range</span>
+    <span class="label">Date range (patterns 1 &amp; 2)</span>
     <button class="pill" data-days="7">Last 7 days</button>
     <button class="pill active" data-days="30">Last 30 days</button>
     <button class="pill" data-days="90">Last 90 days</button>
@@ -157,12 +233,22 @@
   <div class="card" id="card-location">
     <div class="card-head">
       <div>
+        <div class="eyebrow">Pattern 1</div>
         <h2>Location change &rarr; delay &rarr; refund</h2>
         <p>Orders where the dropoff pin shifted materially between dispatch and actual delivery, the shift
            coincided with a delivery delay, and the customer then filed a late-delivery / wrong-address
            refund or compensation claim on that order.</p>
+        <details class="how">
+          <summary>How this is calculated</summary>
+          <p class="how-body">Flags a primary delivery where the distance between the dispatch-time expected
+            dropoff and the actual dropoff exceeds the pin-shift threshold, AND the order's recorded delivery
+            delay exceeds the delay threshold, AND the same order has a compensation/refund event with a
+            late-delivery or wrong-address contact reason. Rows are joined on the order's global order ID.</p>
+        </details>
       </div>
-      <button class="refresh-btn" id="refresh-location">Refresh</button>
+      <div class="btn-row">
+        <button class="btn" id="refresh-location">Refresh</button>
+      </div>
     </div>
     <div class="controls">
       <div class="control">
@@ -176,6 +262,10 @@
     </div>
     <div class="stat-grid" id="stats-location"></div>
     <div class="chart-wrap" id="chart-location"></div>
+    <div class="btn-row" style="margin: 4px 0 8px;">
+      <button class="btn" id="export-location-all">Download CSV (all)</button>
+      <button class="btn btn-primary" id="export-location-selected" disabled>Download CSV (0 selected)</button>
+    </div>
     <div class="table-scroll">
       <table id="table-location">
         <thead></thead>
@@ -188,11 +278,21 @@
   <div class="card" id="card-risk">
     <div class="card-head">
       <div>
+        <div class="eyebrow">Pattern 2</div>
         <h2>Repeat-offender risk score</h2>
         <p>Customers ranked 0&ndash;100 on trailing refund/compensation claim frequency + EUR value,
            across all claim reasons, tiered LOW / MEDIUM / HIGH.</p>
+        <details class="how">
+          <summary>How this is calculated</summary>
+          <p class="how-body">For each customer with at least the minimum claim count, ranks them by percentile
+            on claim count and percentile on total EUR claimed, blends the two 50/50 into a 0&ndash;100 score,
+            and tiers HIGH (&ge;90), MEDIUM (&ge;70), LOW (below). Deliberately a transparent, reviewable blend
+            rather than a black-box model.</p>
+        </details>
       </div>
-      <button class="refresh-btn" id="refresh-risk">Refresh</button>
+      <div class="btn-row">
+        <button class="btn" id="refresh-risk">Refresh</button>
+      </div>
     </div>
     <div class="controls">
       <div class="control">
@@ -210,6 +310,10 @@
     </div>
     <div class="stat-grid" id="stats-risk"></div>
     <div class="chart-wrap" id="chart-risk"></div>
+    <div class="btn-row" style="margin: 4px 0 8px;">
+      <button class="btn" id="export-risk-all">Download CSV (all)</button>
+      <button class="btn btn-primary" id="export-risk-selected" disabled>Download CSV (0 selected)</button>
+    </div>
     <div class="table-scroll">
       <table id="table-risk">
         <thead></thead>
@@ -218,28 +322,76 @@
     </div>
   </div>
 
+  <!-- Section 3: fraud network (device/mobile linkage) -->
+  <div class="card" id="card-network">
+    <div class="card-head">
+      <div>
+        <div class="eyebrow">Pattern 3 &middot; new</div>
+        <h2>Fraud network &mdash; active accounts linked to known fraud</h2>
+        <p>Active (not yet blocked) accounts that Shield has already linked, by shared device or mobile number,
+           to at least one confirmed-fraud account &mdash; the highest-confidence "same person, new account"
+           candidates. Not date-ranged: this reads Shield's current daily snapshot.</p>
+        <details class="how">
+          <summary>How this is calculated, and why not by delivery location</summary>
+          <p class="how-body">Sourced directly from <code>agg_customer_braze_fraud_flag</code>
+            (network_shield_fraud_account_count), which Shield computes from shared device IDs and mobile
+            numbers &mdash; filtered to accounts not already blocked. We tested matching by shared dropoff GPS
+            coordinates instead (same idea: same person re-registering after a block) and it was too noisy to
+            ship: at a 15m location grid, Qatar had 46,935 locations used by both a blocked and an active
+            customer over 180 days &mdash; almost all shared apartment buildings, not fraud. Device/mobile
+            linkage doesn't have that false-positive problem.</p>
+        </details>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="refresh-network">Refresh</button>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="control">
+        <label for="minLinkedFraud">Min linked fraud accounts</label>
+        <input type="number" id="minLinkedFraud" value="1" min="1" max="500" step="1">
+      </div>
+    </div>
+    <div class="stat-grid" id="stats-network"></div>
+    <div class="chart-wrap" id="chart-network"></div>
+    <div class="btn-row" style="margin: 4px 0 8px;">
+      <button class="btn" id="export-network-all">Download CSV (all)</button>
+      <button class="btn btn-primary" id="export-network-selected" disabled>Download CSV (0 selected)</button>
+    </div>
+    <div class="table-scroll">
+      <table id="table-network">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <footer>
-    Source: fulfillment-dwh-production.curated_data_shared (orders, comp_and_refund_events). Billing project: tlb-data-dev.
-    Each refresh runs a live BigQuery scan &mdash; use the toggles deliberately rather than on every keystroke.
+    Source: fulfillment-dwh-production.curated_data_shared (orders, comp_and_refund_events) and
+    tlb-data-prod.data_platform (agg_customer_braze_fraud_flag, rltnp_account_x_identifiers). Billing project: tlb-data-dev.
+    Analytical customer IDs are resolved live per refresh, which adds a fixed ~10&ndash;30GB BigQuery scan on top
+    of each section's own query &mdash; use the toggles deliberately rather than on every keystroke.
   </footer>
 
   <div class="tooltip" id="tooltip"><div class="tt-value" id="tt-value"></div><div class="tt-label" id="tt-label"></div></div>
+  <div class="toast" id="toast"></div>
 
 <script>
   var state = {
     daysBack: 30,
-    location: { rows: [], sortKey: 'customer_pattern_claim_count', sortDir: 'desc' },
-    risk: { rows: [], sortKey: 'risk_score_0_100', sortDir: 'desc' }
+    location: { rows: [], sortKey: 'customer_pattern_claim_count', sortDir: 'desc', selected: new Set() },
+    risk: { rows: [], sortKey: 'risk_score_0_100', sortDir: 'desc', selected: new Set() },
+    network: { rows: [], sortKey: 'network_shield_fraud_account_count', sortDir: 'desc', selected: new Set() }
   };
 
   function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+  function bool(v) { return v === true || v === 'true'; }
 
   function formatCompact(n) {
     if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M';
     if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'K';
     return String(Math.round(n));
   }
-  function formatEUR(n) { return '€' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }); }
   function formatNum(n, d) { return n.toLocaleString(undefined, { maximumFractionDigits: d || 0 }); }
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
@@ -247,15 +399,33 @@
     document.getElementById(cardId).classList.toggle('is-loading', loading);
   }
   function showError(msg) {
-    document.getElementById('globalError').innerHTML =
-      '<div class="error-banner">' + esc(msg) + '</div>';
+    document.getElementById('globalError').innerHTML = '<div class="error-banner">' + esc(msg) + '</div>';
   }
   function clearError() { document.getElementById('globalError').innerHTML = ''; }
   function touchRefreshedStamp() {
     document.getElementById('lastRefreshed').textContent = 'refreshed ' + new Date().toLocaleTimeString();
   }
 
-  /* ---------- date range pills ---------- */
+  var toastTimer;
+  function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 1800);
+  }
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { showToast('Copied ' + text); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+      showToast('Copied ' + text);
+    }
+  }
+
+  /* ---------- date range pills (sections 1 & 2) ---------- */
   document.querySelectorAll('.pill[data-days]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       document.querySelectorAll('.pill[data-days]').forEach(function (b) { b.classList.remove('active'); });
@@ -275,7 +445,72 @@
     loadRiskData();
   });
 
-  /* ---------- section 1 controls ---------- */
+  /* ---------- shared: identity cell, CSV export, row-select ---------- */
+  function idCell(analyticalId, rawId) {
+    if (analyticalId) {
+      return '<div class="id-cell">' +
+        '<button class="copy-btn" data-copy="' + esc(analyticalId) + '" title="Copy analytical ID">&#10697;</button>' +
+        '<span><span class="acid">' + esc(analyticalId) + '</span><span class="raw-id">raw: ' + esc(rawId) + '</span></span>' +
+        '</div>';
+    }
+    return '<div class="id-cell">' +
+      '<button class="copy-btn" data-copy="' + esc(rawId) + '" title="Copy raw ID">&#10697;</button>' +
+      '<span><span class="acid unresolved">' + esc(rawId) + '</span><span class="raw-id">analytical ID unresolved</span></span>' +
+      '</div>';
+  }
+
+  function wireCopyButtons(container) {
+    container.querySelectorAll('.copy-btn').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        copyToClipboard(b.dataset.copy);
+      });
+    });
+  }
+
+  function csvEscape(v) {
+    var s = v == null ? '' : String(v);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function downloadCSV(filename, columns, rows) {
+    var header = columns.map(function (c) { return csvEscape(c.label); }).join(',');
+    var lines = rows.map(function (r) {
+      return columns.map(function (c) {
+        var v = r[c.key];
+        if (c.csvValue) v = c.csvValue(r);
+        else if (c.transform) v = c.transform(v);
+        return csvEscape(v);
+      }).join(',');
+    });
+    var csv = '﻿' + [header].concat(lines).join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Downloaded ' + filename);
+  }
+
+  function wireExportButtons(prefix, columns, sectionState, getVisibleRows) {
+    document.getElementById('export-' + prefix + '-all').addEventListener('click', function () {
+      var rows = getVisibleRows();
+      downloadCSV(prefix + '-all-' + Date.now() + '.csv', columns, rows);
+    });
+    document.getElementById('export-' + prefix + '-selected').addEventListener('click', function () {
+      var rows = getVisibleRows().filter(function (r) { return sectionState.selected.has(r._rowId); });
+      downloadCSV(prefix + '-selected-' + Date.now() + '.csv', columns, rows);
+    });
+  }
+
+  function updateSelectedButton(prefix, sectionState) {
+    var btn = document.getElementById('export-' + prefix + '-selected');
+    btn.textContent = 'Download CSV (' + sectionState.selected.size + ' selected)';
+    btn.disabled = sectionState.selected.size === 0;
+  }
+
+  /* ---------- section 1: location change ---------- */
   ['minShift', 'minDelay'].forEach(function (id) {
     document.getElementById(id).addEventListener('change', loadLocationData);
   });
@@ -291,8 +526,9 @@
     };
     google.script.run
       .withSuccessHandler(function (result) {
-        state.location.rows = result.rows.map(function (r) {
+        state.location.rows = result.rows.map(function (r, i) {
           return Object.assign({}, r, {
+            _rowId: 'loc-' + i,
             dropoff_shift_meters: num(r.dropoff_shift_meters),
             delivery_delay_seconds: num(r.delivery_delay_seconds),
             claim_value_eur: num(r.claim_value_eur),
@@ -301,6 +537,7 @@
             customer_pattern_total_value_eur: num(r.customer_pattern_total_value_eur)
           });
         });
+        state.location.selected = new Set();
         renderLocationSection();
         setLoading('card-location', false);
         touchRefreshedStamp();
@@ -330,6 +567,7 @@
 
     renderWeeklyTrendChart(rows);
     renderLocationTable();
+    updateSelectedButton('location', state.location);
   }
 
   function renderWeeklyTrendChart(rows) {
@@ -346,12 +584,13 @@
     var weeks = Object.keys(byWeek).sort();
     var data = weeks.map(function (w) { return { label: w, value: byWeek[w] }; });
     renderBarChart(document.getElementById('chart-location'), data, {
-      color: 'var(--series-1)', title: 'Flagged claims by week', valueFmt: function (v) { return formatNum(v); }
+      color: 'var(--accent)', title: 'Flagged claims by week', valueFmt: function (v) { return formatNum(v); }
     });
   }
 
   var LOCATION_COLUMNS = [
-    { key: 'customer_id', label: 'Customer' },
+    { key: 'customer_id', label: 'Customer ID', render: function (v, r) { return idCell(r.analytical_customer_id, r.customer_id); },
+      csvValue: function (r) { return r.analytical_customer_id || r.customer_id; } },
     { key: 'order_id', label: 'Order' },
     { key: 'order_date', label: 'Order date' },
     { key: 'dropoff_shift_meters', label: 'Pin shift (m)', num: true },
@@ -363,10 +602,10 @@
   ];
 
   function renderLocationTable() {
-    renderSortableTable('table-location', LOCATION_COLUMNS, state.location, renderLocationSection);
+    renderSortableTable('table-location', LOCATION_COLUMNS, state.location, renderLocationTable, 'location');
   }
 
-  /* ---------- section 2 controls ---------- */
+  /* ---------- section 2: repeat-offender risk score ---------- */
   document.getElementById('minClaims').addEventListener('change', loadRiskData);
   document.getElementById('refresh-risk').addEventListener('click', loadRiskData);
   document.querySelectorAll('.tier-toggle').forEach(function (cb) {
@@ -383,8 +622,9 @@
     var opts = { daysBack: state.daysBack, minClaims: Number(document.getElementById('minClaims').value) || 1 };
     google.script.run
       .withSuccessHandler(function (result) {
-        state.risk.rows = result.rows.map(function (r) {
+        state.risk.rows = result.rows.map(function (r, i) {
           return Object.assign({}, r, {
+            _rowId: 'risk-' + i,
             claim_count: num(r.claim_count),
             distinct_orders_claimed: num(r.distinct_orders_claimed),
             distinct_vendors_claimed: num(r.distinct_vendors_claimed),
@@ -394,6 +634,7 @@
             risk_score_0_100: num(r.risk_score_0_100)
           });
         });
+        state.risk.selected = new Set();
         renderRiskSection();
         setLoading('card-risk', false);
         touchRefreshedStamp();
@@ -431,10 +672,12 @@
 
     state.risk._filteredForTable = rows;
     renderRiskTable();
+    updateSelectedButton('risk', state.risk);
   }
 
   var RISK_COLUMNS = [
-    { key: 'customer_id', label: 'Customer' },
+    { key: 'customer_id', label: 'Customer ID', render: function (v, r) { return idCell(r.analytical_customer_id, r.customer_id); },
+      csvValue: function (r) { return r.analytical_customer_id || r.customer_id; } },
     { key: 'risk_tier', label: 'Tier', render: function (v) { return '<span class="tier-badge tier-' + v + '">' + v + '</span>'; } },
     { key: 'risk_score_0_100', label: 'Risk score', num: true },
     { key: 'claim_count', label: 'Claims', num: true },
@@ -445,12 +688,95 @@
   ];
 
   function renderRiskTable() {
-    var proxyState = { rows: state.risk._filteredForTable || [], sortKey: state.risk.sortKey, sortDir: state.risk.sortDir };
+    var proxyState = { rows: state.risk._filteredForTable || [], sortKey: state.risk.sortKey, sortDir: state.risk.sortDir, selected: state.risk.selected };
     renderSortableTable('table-risk', RISK_COLUMNS, proxyState, function () {
       state.risk.sortKey = proxyState.sortKey;
       state.risk.sortDir = proxyState.sortDir;
       renderRiskTable();
+    }, 'risk');
+  }
+
+  /* ---------- section 3: fraud network ---------- */
+  document.getElementById('minLinkedFraud').addEventListener('change', loadNetworkData);
+  document.getElementById('refresh-network').addEventListener('click', loadNetworkData);
+
+  function loadNetworkData() {
+    setLoading('card-network', true);
+    clearError();
+    var opts = { minLinkedFraud: Number(document.getElementById('minLinkedFraud').value) || 1 };
+    google.script.run
+      .withSuccessHandler(function (result) {
+        state.network.rows = result.rows.map(function (r, i) {
+          return Object.assign({}, r, {
+            _rowId: 'net-' + i,
+            network_size: num(r.network_size),
+            network_shield_fraud_account_count: num(r.network_shield_fraud_account_count),
+            network_shield_voucher_fraud_account_count: num(r.network_shield_voucher_fraud_account_count),
+            network_voucher_order_share: num(r.network_voucher_order_share),
+            network_organic_order_share: num(r.network_organic_order_share),
+            is_shield_fraud: bool(r.is_shield_fraud),
+            is_shield_voucher_fraud: bool(r.is_shield_voucher_fraud),
+            is_device_rooted: bool(r.is_device_rooted),
+            is_app_cloned: bool(r.is_app_cloned)
+          });
+        });
+        state.network.selected = new Set();
+        renderNetworkSection();
+        setLoading('card-network', false);
+        touchRefreshedStamp();
+      })
+      .withFailureHandler(function (err) {
+        setLoading('card-network', false);
+        showError('Fraud-network query failed: ' + (err && err.message ? err.message : err));
+      })
+      .getFraudNetworkData(opts);
+  }
+
+  function renderNetworkSection() {
+    var rows = state.network.rows;
+    var alreadyShieldFraud = rows.filter(function (r) { return r.is_shield_fraud; }).length;
+    var avgNetworkSize = rows.length ? rows.reduce(function (s, r) { return s + r.network_size; }, 0) / rows.length : 0;
+    var maxLinked = rows.reduce(function (m, r) { return Math.max(m, r.network_shield_fraud_account_count); }, 0);
+
+    document.getElementById('stats-network').innerHTML = [
+      statTile('Active accounts flagged', formatCompact(rows.length)),
+      statTile('Already Shield-fraud too', formatCompact(alreadyShieldFraud)),
+      statTile('Avg network size', avgNetworkSize.toFixed(0)),
+      statTile('Max linked fraud accounts', formatCompact(maxLinked))
+    ].join('');
+
+    var buckets = [
+      { label: '1-2', min: 1, max: 2 },
+      { label: '3-5', min: 3, max: 5 },
+      { label: '6-20', min: 6, max: 20 },
+      { label: '21+', min: 21, max: Infinity }
+    ];
+    var data = buckets.map(function (b) {
+      var count = rows.filter(function (r) { return r.network_shield_fraud_account_count >= b.min && r.network_shield_fraud_account_count <= b.max; }).length;
+      return { label: b.label, value: count, color: 'var(--accent)' };
     });
+    renderBarChart(document.getElementById('chart-network'), data, {
+      title: 'Accounts by linked-fraud-account count', valueFmt: function (v) { return formatNum(v); }
+    });
+
+    renderNetworkTable();
+    updateSelectedButton('network', state.network);
+  }
+
+  var NETWORK_COLUMNS = [
+    { key: 'account_id', label: 'Customer ID', render: function (v, r) { return idCell(r.analytical_customer_id, r.account_id); },
+      csvValue: function (r) { return r.analytical_customer_id || r.account_id; } },
+    { key: 'network_shield_fraud_account_count', label: 'Linked fraud accounts', num: true },
+    { key: 'network_size', label: 'Network size', num: true },
+    { key: 'network_voucher_order_share', label: 'Voucher order share', num: true, transform: function (v) { return (v * 100).toFixed(0) + '%'; } },
+    { key: 'network_organic_order_share', label: 'Organic order share', num: true, transform: function (v) { return (v * 100).toFixed(0) + '%'; } },
+    { key: 'is_shield_fraud', label: 'Already Shield-fraud', render: function (v) { return v ? '<span class="tier-badge tier-HIGH">YES</span>' : ''; } },
+    { key: 'is_device_rooted', label: 'Rooted device', render: function (v) { return v ? 'yes' : ''; } },
+    { key: 'is_app_cloned', label: 'Cloned app', render: function (v) { return v ? 'yes' : ''; } }
+  ];
+
+  function renderNetworkTable() {
+    renderSortableTable('table-network', NETWORK_COLUMNS, state.network, renderNetworkTable, 'network');
   }
 
   /* ---------- shared UI helpers ---------- */
@@ -458,7 +784,7 @@
     return '<div class="stat-tile"><div class="label">' + esc(label) + '</div><div class="value">' + esc(value) + '</div></div>';
   }
 
-  function renderSortableTable(tableId, columns, sortState, onResort) {
+  function renderSortableTable(tableId, columns, sortState, onResort, exportPrefix) {
     var table = document.getElementById(tableId);
     var thead = table.querySelector('thead');
     var tbody = table.querySelector('tbody');
@@ -472,12 +798,14 @@
       return sortState.sortDir === 'asc' ? ka.localeCompare(kb) : kb.localeCompare(ka);
     });
 
-    thead.innerHTML = '<tr>' + columns.map(function (c) {
-      var arrow = c.key === sortState.sortKey ? (sortState.sortDir === 'asc' ? '▲' : '▼') : '';
-      return '<th data-key="' + c.key + '">' + esc(c.label) + (arrow ? ' <span class="arrow">' + arrow + '</span>' : '') + '</th>';
-    }).join('') + '</tr>';
+    var allSelected = rows.length > 0 && rows.every(function (r) { return sortState.selected.has(r._rowId); });
+    thead.innerHTML = '<tr><th class="chk-col"><input type="checkbox" id="' + exportPrefix + '-select-all"' + (allSelected ? ' checked' : '') + '></th>' +
+      columns.map(function (c) {
+        var arrow = c.key === sortState.sortKey ? (sortState.sortDir === 'asc' ? '▲' : '▼') : '';
+        return '<th data-key="' + c.key + '">' + esc(c.label) + (arrow ? ' <span class="arrow">' + arrow + '</span>' : '') + '</th>';
+      }).join('') + '</tr>';
 
-    thead.querySelectorAll('th').forEach(function (th) {
+    thead.querySelectorAll('th[data-key]').forEach(function (th) {
       th.addEventListener('click', function () {
         var key = th.dataset.key;
         if (sortState.sortKey === key) sortState.sortDir = sortState.sortDir === 'asc' ? 'desc' : 'asc';
@@ -485,19 +813,35 @@
         onResort();
       });
     });
+    document.getElementById(exportPrefix + '-select-all').addEventListener('change', function (e) {
+      rows.forEach(function (r) { if (e.target.checked) sortState.selected.add(r._rowId); else sortState.selected.delete(r._rowId); });
+      onResort();
+      updateSelectedButton(exportPrefix, sortState);
+    });
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="' + columns.length + '"><div class="empty-state">No rows match the current toggles.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + (columns.length + 1) + '"><div class="empty-state">No rows match the current toggles.</div></td></tr>';
       return;
     }
 
     tbody.innerHTML = rows.map(function (r) {
-      return '<tr>' + columns.map(function (c) {
-        var v = r[c.key];
-        var display = c.render ? c.render(v) : esc(c.transform ? c.transform(v) : v);
-        return '<td class="' + (c.num ? 'num' : '') + '">' + display + '</td>';
-      }).join('') + '</tr>';
+      var checked = sortState.selected.has(r._rowId) ? ' checked' : '';
+      return '<tr>' +
+        '<td class="chk-col"><input type="checkbox" class="row-check" data-row="' + r._rowId + '"' + checked + '></td>' +
+        columns.map(function (c) {
+          var v = r[c.key];
+          var display = c.render ? c.render(v, r) : esc(c.transform ? c.transform(v) : v);
+          return '<td class="' + (c.num ? 'num' : '') + '">' + display + '</td>';
+        }).join('') + '</tr>';
     }).join('');
+
+    tbody.querySelectorAll('.row-check').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        if (cb.checked) sortState.selected.add(cb.dataset.row); else sortState.selected.delete(cb.dataset.row);
+        updateSelectedButton(exportPrefix, sortState);
+      });
+    });
+    wireCopyButtons(tbody);
   }
 
   /* ---------- minimal SVG bar chart with hover tooltip ---------- */
@@ -528,7 +872,7 @@
       var x = padL + i * barSlot + (barSlot - barWidth) / 2;
       var h = niceMax > 0 ? (d.value / niceMax) * plotH : 0;
       var y = padT + plotH - h;
-      var color = d.color || opts.color || 'var(--series-1)';
+      var color = d.color || opts.color || 'var(--accent)';
       svgParts.push('<rect class="bar-rect" data-label="' + esc(d.label) + '" data-value="' + d.value + '" x="' + x + '" y="' + y +
         '" width="' + barWidth + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + color + '"></rect>');
       var isoDate = /^\d{4}-\d{2}-\d{2}$/.test(d.label);
@@ -552,9 +896,15 @@
     });
   }
 
+  /* ---------- wire up CSV export buttons ---------- */
+  wireExportButtons('location', LOCATION_COLUMNS, state.location, function () { return state.location.rows; });
+  wireExportButtons('risk', RISK_COLUMNS, state.risk, function () { return state.risk._filteredForTable || []; });
+  wireExportButtons('network', NETWORK_COLUMNS, state.network, function () { return state.network.rows; });
+
   /* ---------- initial load ---------- */
   loadLocationData();
   loadRiskData();
+  loadNetworkData();
 </script>
 </body>
 </html>
