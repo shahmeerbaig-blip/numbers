@@ -8,13 +8,14 @@
  *
  *   1. Location change -> delay -> refund   (location_change_delay_refund_pattern.sql)
  *   2. Repeat-offender risk score           (customer_repeat_refund_risk_score.sql)
- *   3. Fraud network (new)                  active accounts already linked, by
- *      device/mobile number, to a Shield-confirmed fraud account but not yet
- *      blocked. This replaces an earlier idea of matching customers by shared
- *      dropoff GPS coordinates: that was tested directly against BigQuery and
- *      found too noisy in a dense city (46,935 "shared address" matches over
- *      180 days in Qatar alone, almost all from apartment buildings, not
- *      fraud). Shield's own device/mobile-number network linkage
+ *   3. Fraud network                        (fraud_network_shield_linked_accounts.sql)
+ *      Active accounts already linked, by device/mobile number, to a
+ *      Shield-confirmed fraud account but not yet blocked. This replaces an
+ *      earlier idea of matching customers by shared dropoff GPS coordinates:
+ *      that was tested directly against BigQuery and found too noisy in a
+ *      dense city (46,935 "shared address" matches over 180 days in Qatar
+ *      alone, almost all from apartment buildings, not fraud). Shield's own
+ *      device/mobile-number network linkage
  *      (agg_customer_braze_fraud_flag.network_shield_fraud_account_count) is
  *      the accurate version of "this is the same person on a new account."
  *
@@ -324,12 +325,12 @@ function getRiskScoreData(opts) {
 }
 
 /**
- * Pattern 3 (new): active (not yet blocked) Qatar accounts that Shield has
- * already linked, by shared device or mobile number, to at least one
- * confirmed-fraud account. These are the highest-confidence "same person,
- * new account" candidates — ban-evasion, not coincidence — sourced directly
- * from Shield's own network computation rather than a location heuristic.
- * Toggle: min linked fraud accounts.
+ * Pattern 3 (fraud_network_shield_linked_accounts.sql): active (not yet
+ * blocked) Qatar accounts that Shield has already linked, by shared device
+ * or mobile number, to at least one confirmed-fraud account. These are the
+ * highest-confidence "same person, new account" candidates — ban-evasion,
+ * not coincidence — sourced directly from Shield's own network computation
+ * rather than a location heuristic. Toggle: min linked fraud accounts.
  */
 function getFraudNetworkData(opts) {
   opts = opts || {};

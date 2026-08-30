@@ -35,7 +35,7 @@ on `tlb-data-dev`.
    late/wrong-address claim followed.
 2. **Repeat-offender risk score** (`customer_repeat_refund_risk_score.sql`) —
    customers ranked 0–100 on trailing claim frequency + EUR value.
-3. **Fraud network** (new, dashboard-only — no standalone `.sql` file yet) —
+3. **Fraud network** (`fraud_network_shield_linked_accounts.sql`) —
    active (not-yet-blocked) accounts already linked by Shield to a
    confirmed-fraud account via shared device ID or mobile number
    (`agg_customer_braze_fraud_flag.network_shield_fraud_account_count`).
@@ -137,7 +137,6 @@ internal-only.
   integer (`isFinite` + `Math.trunc` + string round-trip check) before being
   inlined, so there's no injection surface despite not being a bound
   parameter.
-- The two source `.sql` files in the repo root are the canonical, reviewable
-  version of rules 1 and 2 — the queries embedded in `Code.gs` are the same
-  logic, just parameterized. Rule 3 currently only exists inside `Code.gs`;
-  ask if you want it split into its own `.sql` file too.
+- The three source `.sql` files in the repo root are the canonical, reviewable
+  version of rules 1–3 — the queries embedded in `Code.gs` are the same
+  logic, just parameterized.
