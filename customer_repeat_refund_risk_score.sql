@@ -2,10 +2,12 @@
 -- refund/compensation claims over a trailing 90-day window, across ALL claim
 -- reasons (not just the location-change pattern — see
 -- location_change_delay_refund_pattern.sql for that specific rule).
+-- Scope: Qatar only.
 --
 -- Source: comp_and_refund_events (event-level Autocomp/OneView/Help Center
--- feed). `with_item_removal` was checked and is 'N/A' for 100% of rows in the
--- last 90 days, so it's excluded — not a usable signal today.
+-- feed). `country` is the full name ("Qatar"), not an ISO code. `with_item_removal`
+-- was checked and is 'N/A' for 100% of rows in the last 90 days, so it's
+-- excluded — not a usable signal today.
 --
 -- Score is a simple, transparent 0-100 blend of where a customer sits versus
 -- everyone else on (a) how often they claim and (b) how much EUR they've
@@ -15,7 +17,6 @@
 WITH claims_90d AS (
   SELECT
     customer_id,
-    country,
     COUNT(*)                                                                 AS claim_count,
     COUNT(DISTINCT order_id)                                                 AS distinct_orders_claimed,
     COUNT(DISTINCT vendor_id)                                                AS distinct_vendors_claimed,
@@ -26,8 +27,9 @@ WITH claims_90d AS (
     MAX(created_date)                                                       AS last_claim_date
   FROM `fulfillment-dwh-production.curated_data_shared.comp_and_refund_events`
   WHERE created_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+    AND country = 'Qatar'
     AND customer_id IS NOT NULL
-  GROUP BY customer_id, country
+  GROUP BY customer_id
 ),
 
 scored AS (
@@ -40,7 +42,6 @@ scored AS (
 
 SELECT
   customer_id,
-  country,
   claim_count,
   distinct_orders_claimed,
   distinct_vendors_claimed,
