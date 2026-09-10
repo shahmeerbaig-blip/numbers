@@ -21,6 +21,15 @@
 --    (see rider_shift_hours CTE).
 -- 3) The final query is still driven FROM fct_logistics_order, so an
 --    hour with riders on shift but zero orders won't appear as a row.
+--
+-- Demand vs. supply: orders_count/successful_orders in the final SELECT are
+-- NOT restricted to orders a Hybrid rider actually delivered. For staffing,
+-- what matters is how many orders a Hybrid rider COULD have taken -- i.e.
+-- every darkstore order except ones tagged is_large_order (Hybrid riders
+-- can't carry large orders). Counting only orders Hybrid riders happened to
+-- deliver would make demand self-limit to whatever headcount already
+-- existed that hour, masking understaffing. active_riders (supply) is still
+-- scoped to Hybrid riders only, via the CTEs above.
 
 WITH order_days AS (
   SELECT
@@ -110,9 +119,6 @@ LEFT JOIN `tlb-data-prod.data_platform.dim_logistics_vendor` as v
   ON o.country_code = v.country_code
   AND o.city_id = v.city_id
   AND o.vendor_code = v.vendor_code
-LEFT JOIN `tlb-data-prod.data_platform.dim_logistics_rider_history` as rh
-  ON o.primary_rider_id = rh.rider_id
-  AND o.created_date BETWEEN rh.valid_from AND rh.valid_to
 LEFT JOIN scheduled_riders sr
   ON sr.order_date = o.created_date
   AND sr.hour = EXTRACT(HOUR FROM oi.order_time)
@@ -123,6 +129,6 @@ WHERE o.country_code IN (@country_code, LOWER(@country_code), UPPER(@country_cod
   AND o.order_status IN ('completed', 'Completed', 'COMPLETED')
   AND oi.is_darkstore = TRUE
   AND o.created_date BETWEEN PARSE_DATE('%Y-%m-%d', @date_from) AND PARSE_DATE('%Y-%m-%d', @date_to)
-  AND UPPER(rh.last_contract_name) LIKE '%HYBRID%'
+  AND NOT COALESCE(o.is_large_order, FALSE)
 GROUP BY order_date, hour, branch_name
 ORDER BY branch_name, hour
