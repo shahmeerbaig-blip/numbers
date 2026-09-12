@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tmart Hybrid Shift Planner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@700;800&display=swap');
+:root {
+  --bg:#FFFFFF; --surface:#F8F7F4; --surface2:#EFE9E1;
+  --border:#E5E0DB; --border2:#D4CCBF;
+  --text:#1A1A1A; --text2:#888888; --text3:#999999;
+  --s1:#388bfd; --s1-dim:#E3F2FD; --s1-bg:#0d2044;
+  --s2:#FF5900; --s2-dim:#FFF3ED; --s2-bg:#FF5900;
+  --s3:#8B5CF6; --s3-dim:#F3E8FF; --s3-bg:#5B21B6;
+  --ov:#10B981; --ov-dim:#D1FAE5;
+  --unc:#EF4444; --eve:#D29922; --eve-bg:#FEF3C7;
+  --bal:#58a6ff; --std:#10B981;
+  --stk:#E879F9;
+  --r:8px; --rl:12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.5; }
+.shell { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+.sidebar { background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.main { padding: 28px 32px; overflow-y: auto; background: var(--surface); }
+.sb-hdr { padding: 20px 18px 16px; border-bottom: 1px solid var(--border); }
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-dot { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #FF5900, #FA6E22); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.logo-text { font-size: 14px; font-weight: 700; color: var(--text); font-family: 'Poppins', sans-serif; }
+.logo-sub { font-size: 11px; color: var(--text3); font-family: 'Inter', monospace; }
+.sb-sec { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.sb-sec.grow { flex: 1; border-bottom: none; }
+.sb-lbl { font-size: 11px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+.sc-row { display: flex; gap: 6px; }
+.sc-btn { flex: 1; padding: 8px 6px; border-radius: 7px; border: 1px solid var(--border2); background: var(--surface); color: var(--text2); font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s; font-family: 'Inter', sans-serif; text-align: center; }
+.sc-btn:hover { border-color: var(--s2); color: var(--s2); }
+.sc-btn.on { border-color: var(--s2); background: var(--s2-dim); color: var(--s2); }
+.order-pct-wrap { display: flex; flex-direction: column; gap: 8px; }
+.order-row { display: flex; justify-content: space-between; align-items: center; }
+.order-lbl-txt { font-size: 12px; color: var(--text2); }
+.order-val { font-size: 14px; font-weight: 700; color: var(--eve); }
+.order-slider { -webkit-appearance: none; width: 100%; height: 5px; border-radius: 3px; background: linear-gradient(to right, var(--eve) 0%, var(--eve) 100%); cursor: pointer; }
+.order-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--eve); cursor: pointer; box-shadow: 0 2px 8px rgba(210, 153, 34, 0.3); }
+.order-hint { font-size: 11px; color: var(--text3); line-height: 1.5; }
+.order-hint b { color: var(--eve); font-weight: 600; }
+.stk-row { display: flex; align-items: center; justify-content: space-between; }
+.stk-info { font-size: 12px; color: var(--text2); }
+.stk-info span { color: var(--stk); font-weight: 600; }
+.toggle-wrap { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+.toggle-wrap input { opacity: 0; width: 0; height: 0; }
+.toggle-track { position: absolute; inset: 0; background: var(--border2); border-radius: 12px; cursor: pointer; transition: 0.2s; }
+.toggle-track::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+input:checked+.toggle-track { background: var(--stk); }
+input:checked+.toggle-track::before { transform: translateX(18px); }
+.stk-rate-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.stk-rate-lbl { font-size: 12px; color: var(--text2); white-space: nowrap; }
+.stk-rate-val { font-size: 12px; font-weight: 600; color: var(--stk); min-width: 35px; text-align: right; }
+.stk-rate-slider { -webkit-appearance: none; flex: 1; height: 4px; border-radius: 2px; background: var(--border2); cursor: pointer; }
+.stk-rate-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--stk); cursor: pointer; box-shadow: 0 2px 6px rgba(232, 121, 249, 0.3); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font-size: 11px; font-weight: 500; padding: 5px 10px; border-radius: 20px; border: 1px solid var(--border2); background: var(--surface); color: var(--text2); cursor: pointer; transition: 0.15s; user-select: none; }
+.chip:hover { border-color: var(--s1); color: var(--s1); }
+.chip.on { background: var(--s1-dim); border-color: var(--s1); color: var(--s1); }
+.chip-acts { display: flex; gap: 8px; margin-bottom: 8px; }
+.chip-act { font-size: 11px; color: var(--text3); background: none; border: none; cursor: pointer; padding: 0; font-family: 'Inter', sans-serif; font-weight: 500; }
+.chip-act:hover { color: var(--s2); }
+.sh-block { margin-bottom: 12px; }
+.sh-block:last-child { margin-bottom: 0; }
+.sh-block.hidden { display: none; }
+.sh-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; margin-bottom: 8px; }
+.sh-tag.s1 { background: var(--s1-dim); color: var(--s1); }
+.sh-tag.s2 { background: var(--s2-dim); color: var(--s2); }
+.sh-tag.s3 { background: var(--s3-dim); color: var(--s3); }
+.t-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.t-fld { display: flex; flex-direction: column; gap: 4px; }
+.t-fld label { font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; }
+.t-fld select { background: var(--surface); border: 1px solid var(--border2); border-radius: 6px; color: var(--text); font-size: 12px; padding: 6px 8px; font-family: 'Inter', sans-serif; cursor: pointer; font-weight: 500; }
+.t-fld select:focus { outline: none; border-color: var(--s2); box-shadow: 0 0 0 3px rgba(255,89,0,0.1); }
+.r-item { margin-bottom: 8px; }
+.r-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.r-name { font-size: 12px; color: var(--text2); }
+.r-cnt { font-size: 12px; font-weight: 600; color: var(--text); min-width: 24px; text-align: right; }
+.r-slide { -webkit-appearance: none; width: 100%; height: 4px; background: var(--border2); border-radius: 2px; cursor: pointer; }
+.r-slide::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--s1); cursor: pointer; transition: 0.15s; box-shadow: 0 2px 6px rgba(56, 139, 253, 0.3); }
+.sb-foot { padding: 12px 18px; border-top: 1px solid var(--border); }
+.reset-btn { width: 100%; padding: 8px; border-radius: 7px; border: 1px solid var(--border2); background: var(--surface); color: var(--text2); font-size: 12px; cursor: pointer; font-family: 'Inter', sans-serif; font-weight: 600; transition: 0.15s; }
+.reset-btn:hover { background: var(--s2-dim); color: var(--s2); border-color: var(--s2); }
+.pg-hdr { margin-bottom: 24px; display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.pg-title { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; margin-bottom: 4px; font-family: 'Poppins', sans-serif; }
+.pg-sub { font-size: 13px; color: var(--text2); }
+.pg-badges { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.f-badge { font-size: 12px; color: var(--text3); font-weight: 500; }
+.f-badge b { color: var(--s1); font-weight: 700; }
+.ord-badge, .stk-badge, .ns-badge, .utr-cap-badge, .dist-badge { font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 600; display: none; }
+.ord-badge { background: var(--eve-bg); color: var(--eve); display: inline-block; }
+.stk-badge.on { display: inline-block; background: var(--s3-dim); color: var(--s3); }
+.ns-badge.on { display: inline-block; background: #FECACA; color: var(--unc); }
+.utr-cap-badge.on { display: inline-block; background: var(--s3-dim); color: var(--s3); }
+.dist-badge.on { display: inline-block; background: var(--ov-dim); color: var(--ov); }
+.kpi-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+.kpi { background: #FFFFFF; border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+.kpi-lbl { font-size: 11px; color: var(--text3); margin-bottom: 8px; letter-spacing: 0.05em; font-weight: 600; text-transform: uppercase; }
+.kpi-val { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; font-family: 'Poppins', sans-serif; }
+.kpi-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.sec-ttl { font-size: 12px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.sec-ttl::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
+.chart-card { background: #FFFFFF; border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+.card-ttl { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 12px; letter-spacing: 0.05em; text-transform: uppercase; }
+.chart-wrap { position: relative; width: 100%; height: 200px; }
+.leg { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text2); margin-bottom: 12px; }
+.leg span { display: flex; align-items: center; gap: 5px; font-weight: 500; }
+.lb { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+.tbl-wrap { background: #FFFFFF; border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; overflow-y: hidden; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead tr { background: var(--surface); border-bottom: 1px solid var(--border); }
+th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+tbody tr:hover { background: var(--surface); }
+td { padding: 10px 12px; color: var(--text); vertical-align: middle; white-space: nowrap; }
+tfoot tr { background: var(--surface); border-top: 1px solid var(--border); }
+tfoot td { font-weight: 600; font-size: 12px; padding: 10px 12px; }
+.pbadge, .spill { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 5px; display: inline-block; }
+.p-eve { background: var(--eve-bg); color: var(--eve); }
+.p-std { background: var(--ov-dim); color: var(--ov); }
+.p-s1 { background: var(--s1-dim); color: var(--s1); }
+.p-s2 { background: var(--s2-dim); color: var(--s2); }
+.p-s3 { background: var(--s3-dim); color: var(--s3); }
+.mono { font-family: 'Inter', monospace; font-weight: 600; font-size: 12px; }
+.utr-hi { color: var(--unc); }
+.utr-md { color: var(--eve); }
+.utr-ok { color: var(--ov); }
+.utr-lo { color: var(--text2); }
+.rider-input { width: 48px; background: var(--surface); border: 1px solid var(--border2); border-radius: 6px; color: var(--s1); font-family: 'Inter', monospace; font-size: 12px; font-weight: 600; padding: 4px 6px; text-align: center; transition: border-color 0.15s; }
+.rider-input.s2c { color: var(--s2); border-color: var(--s2-dim); }
+.rider-input.s3c { color: var(--s3); border-color: var(--s3-dim); }
+.rider-input:focus { outline: none; border-color: var(--s1); background: var(--s1-dim); }
+.rider-input.s2c:focus { border-color: var(--s2); background: var(--s2-dim); }
+.rider-input.s3c:focus { border-color: var(--s3); background: var(--s3-dim); }
+.rider-input.manual { border-style: solid; border-color: var(--eve) !important; color: var(--eve) !important; }
+.dist-item { margin-bottom: 8px; }
+.dist-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.dist-name { font-size: 12px; color: var(--text2); }
+.dist-val { font-size: 12px; font-weight: 600; color: var(--ov); min-width: 50px; text-align: right; }
+.dist-slide { -webkit-appearance: none; width: 100%; height: 4px; background: var(--border2); border-radius: 2px; cursor: pointer; }
+.dist-slide::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--ov); cursor: pointer; transition: 0.15s; box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3); }
+.ns-wrap { display: flex; flex-direction: column; gap: 8px; }
+.ns-row { display: flex; justify-content: space-between; align-items: center; }
+.ns-lbl { font-size: 12px; color: var(--text2); font-weight: 500; }
+.ns-val { font-size: 14px; font-weight: 700; color: var(--unc); }
+.ns-slider { -webkit-appearance: none; width: 100%; height: 5px; border-radius: 3px; background: var(--border2); cursor: pointer; }
+.ns-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--unc); cursor: pointer; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3); }
+.utr-cap-wrap { display: flex; flex-direction: column; gap: 8px; }
+.utr-cap-row { display: flex; justify-content: space-between; align-items: center; }
+.utr-cap-lbl { font-size: 12px; color: var(--text2); font-weight: 500; }
+.utr-cap-val { font-size: 14px; font-weight: 700; color: var(--s3); }
+.utr-cap-slider { -webkit-appearance: none; width: 100%; height: 5px; border-radius: 3px; background: var(--border2); cursor: pointer; }
+.utr-cap-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--s3); cursor: pointer; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3); }
+.utr-cap-hint { font-size: 11px; color: var(--text3); line-height: 1.5; }
+.utr-cap-hint b { color: var(--s3); font-weight: 600; }
+.edit-banner { background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(16, 185, 129, 0.05)); border: 1px solid var(--s1); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; display: none; }
+.edit-banner.active { display: block; }
+.edit-banner-title { font-size: 12px; font-weight: 700; color: var(--s1); margin-bottom: 2px; }
+.edit-banner-sub { font-size: 11px; color: var(--text3); }
+.edit-save-btn, .edit-reset-btn { width: 100%; margin-top: 8px; padding: 7px; border-radius: 6px; border: 1px solid var(--s1); background: var(--s1-dim); color: var(--s1); font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; transition: 0.15s; }
+.edit-save-btn:hover { background: var(--s1); color: #fff; }
+.edit-reset-btn { border-color: var(--border2); background: transparent; color: var(--text3); }
+.edit-reset-btn:hover { color: var(--unc); border-color: var(--unc); }
+.bc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 28px; }
+.bc-card { background: #FFFFFF; border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+.bc-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+.bc-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.bc-meta { font-size: 11px; color: var(--text3); margin-bottom: 10px; font-weight: 500; }
+.bc-row { margin-bottom: 10px; }
+.bc-row:last-child { margin-bottom: 0; }
+.bc-lbl { font-size: 10px; color: var(--text3); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.06em; display: flex; justify-content: space-between; font-weight: 600; }
+.bc-wrap { position: relative; height: 60px; width: 100%; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border); }
+input[type="date"] { color-scheme: light; }
+.total-badge{font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px;font-family:'Inter',monospace;vertical-align:middle;}
+.total-ok{background:var(--ov-dim);color:var(--ov)}
+.total-warn{background:var(--eve-bg);color:var(--eve)}
+.total-over{background:#4a1510;color:var(--unc)}
+.reset-row-btn{font-size:9px;color:var(--text3);background:none;border:none;cursor:pointer;padding:0;font-family:'Inter',sans-serif;margin-left:4px;vertical-align:middle;}
+.reset-row-btn:hover{color:var(--text2)}
+.ns-breakdown{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:4px}
+.ns-shift{background:var(--surface2);border-radius:5px;padding:5px 7px;text-align:center}
+.ns-shift-lbl{font-size:9px;color:var(--text3);margin-bottom:2px}
+.ns-shift-val{font-size:12px;font-weight:600;font-family:'Inter',monospace}
+.utr-shift-cell{display:flex;flex-direction:column;gap:2px}
+.utr-shift-row{display:flex;align-items:center;gap:4px;font-size:10px;font-family:'Inter',monospace;font-weight:500;white-space:nowrap}
+.utr-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.saved-tag{font-size:9px;padding:1px 5px;border-radius:3px;background:var(--s1-bg);color:var(--s1);margin-left:4px;font-family:'Inter',monospace;vertical-align:middle}
+.utr-leg{display:flex;gap:8px;font-size:9px;color:var(--text3);margin-bottom:3px;flex-wrap:wrap}
+.utr-leg span{display:flex;align-items:center;gap:3px}
+.mini-stk{display:flex;height:7px;border-radius:4px;overflow:hidden;width:90px;gap:1px}
+.mini-seg{height:100%}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<aside class="sidebar">
+  <div class="sb-hdr">
+    <div class="logo">
+      <div class="logo-dot">T</div>
+      <div><div class="logo-text">Tmart Shift Planner</div><div class="logo-sub">hybrid operations</div></div>
+    </div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">Country Filter</div>
+    <select id="country-select" style="width:100%;padding:6px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:'Inter',sans-serif;font-size:11px;margin-bottom:12px;cursor:pointer">
+      <option value="QA">Qatar (QA)</option>
+      <option value="AE">UAE (AE)</option>
+      <option value="BH">Bahrain (BH)</option>
+      <option value="KW">Kuwait (KW)</option>
+      <option value="OM">Oman (OM)</option>
+      <option value="JO">Jordan (JO)</option>
+      <option value="IQ">Iraq (IQ)</option>
+      <option value="SA">Saudi Arabia (SA)</option>
+    </select>
+
+    <div class="sb-lbl">Query Date Range</div>
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <input type="date" id="date-from" style="flex:1;padding:6px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:'Inter',sans-serif;font-size:11px">
+      <input type="date" id="date-to" style="flex:1;padding:6px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:'Inter',sans-serif;font-size:11px">
+    </div>
+    <button onclick="loadDataForDateRange()" style="width:100%;padding:6px;border-radius:5px;border:1px solid var(--s1);background:var(--s1-dim);color:var(--s1);font-weight:600;font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;margin-bottom:8px">Load Range from BigQuery</button>
+    <button onclick="exportConfiguration()" style="width:100%;padding:6px;border-radius:5px;border:1px solid var(--ov);background:var(--ov-dim);color:var(--ov);font-weight:600;font-size:11px;cursor:pointer;font-family:'Inter',sans-serif">⬇ Export Shift Plan (CSV)</button>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">Order Volume Filter</div>
+    <div class="order-pct-wrap">
+      <div class="order-row">
+        <span class="order-lbl-txt">Target order share</span>
+        <span class="order-val" id="ord-val">100%</span>
+      </div>
+      <input type="range" class="order-slider" id="ord-slider" min="10" max="100" step="5" value="100">
+      <div class="order-hint">Scales hourly demand to <b id="ord-hint">100%</b> of actual.</div>
+    </div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">Stacking Impact</div>
+    <div class="stk-row">
+      <div class="stk-info">1+1 stacking <span>overlay</span></div>
+      <label class="toggle-wrap">
+        <input type="checkbox" id="stk-toggle">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+    <div class="stk-rate-row" id="stk-rate-row" style="opacity:.4;pointer-events:none">
+      <span class="stk-rate-lbl">Stacking rate</span>
+      <input type="range" class="stk-rate-slider" id="stk-rate" min="5" max="60" step="5" value="25">
+      <span class="stk-rate-val" id="stk-val">25%</span>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5" id="stk-hint">
+      Enable to see how stacking reduces effective UTR.
+    </div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">Max Manageable UTR</div>
+    <div class="utr-cap-wrap">
+      <div class="utr-cap-row">
+        <span class="utr-cap-lbl">UTR cap per rider</span>
+        <span class="utr-cap-val" id="utr-cap-val">No cap</span>
+      </div>
+      <input type="range" class="utr-cap-slider" id="utr-cap-slider" min="0" max="40" step="1" value="0">
+      <div class="utr-cap-hint" id="utr-cap-hint">Drag to set. Hours where UTR exceeds this cap show as <b>over-capacity</b>.</div>
+    </div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">No-show / Day Off</div>
+    <div class="ns-wrap">
+      <div class="ns-row">
+        <span class="ns-lbl">Absence rate</span>
+        <span class="ns-val" id="ns-val">0%</span>
+      </div>
+      <input type="range" class="ns-slider" id="ns-slider" min="0" max="50" step="1" value="0">
+      <div class="ns-breakdown" id="ns-breakdown" style="display:none">
+        <div class="ns-shift"><div class="ns-shift-lbl">S1 RIDERS</div><div class="ns-shift-val" id="ns-s1-eff" style="color:var(--s1)">—</div></div>
+        <div class="ns-shift"><div class="ns-shift-lbl">S2 RIDERS</div><div class="ns-shift-val" id="ns-s2-eff" style="color:var(--s2)">—</div></div>
+        <div class="ns-shift"><div class="ns-shift-lbl">ABSENT</div><div class="ns-shift-val" id="ns-absent" style="color:var(--unc)">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">Number of Shifts</div>
+    <div class="sc-row">
+      <button class="sc-btn" id="sc1" onclick="setNShifts(1)">1 Shift</button>
+      <button class="sc-btn on" id="sc2" onclick="setNShifts(2)">2 Shifts</button>
+      <button class="sc-btn" id="sc3" onclick="setNShifts(3)">3 Shifts</button>
+    </div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">Shift Windows</div>
+    <div class="edit-banner" id="edit-banner">
+      <div class="edit-banner-title" id="edit-banner-title">Editing branch</div>
+      <div class="edit-banner-sub">Changes apply only to this branch</div>
+      <button class="edit-save-btn" onclick="saveCurrentBranch()"> Save to branch</button>
+      <button class="edit-reset-btn" onclick="resetCurrentBranch()"> Reset to fleet defaults</button>
+    </div>
+    <div class="sh-block" id="blk1">
+      <div class="sh-tag s1"> Shift 1</div>
+      <div class="t-row">
+        <div class="t-fld"><label>START</label><select id="s1s"></select></div>
+        <div class="t-fld"><label>END</label><select id="s1e"></select></div>
+      </div>
+    </div>
+    <div class="sh-block" id="blk2">
+      <div class="sh-tag s2"> Shift 2</div>
+      <div class="t-row">
+        <div class="t-fld"><label>START</label><select id="s2s"></select></div>
+        <div class="t-fld"><label>END</label><select id="s2e"></select></div>
+      </div>
+    </div>
+    <div class="sh-block hidden" id="blk3">
+      <div class="sh-tag s3"> Shift 3</div>
+      <div class="t-row">
+        <div class="t-fld"><label>START</label><select id="s3s"></select></div>
+        <div class="t-fld"><label>END</label><select id="s3e"></select></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">Branch Filter</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div class="chip-acts" style="margin:0">
+        <button class="chip-act" onclick="allBranches()">Select all</button>
+        <span style="color:var(--border2)">·</span>
+        <button class="chip-act" onclick="clearBranches()">Clear all</button>
+      </div>
+      <span id="sidebar-branch-label" style="font-size:10px;color:var(--text3);font-family:'Inter',monospace">Fleet defaults</span>
+    </div>
+    <div class="chip-row" id="chip-row"></div>
+  </div>
+
+  <div class="sb-sec grow">
+    <div class="sb-lbl">Riders per Branch</div>
+    <div id="sliders"></div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sb-lbl">Drop-off Distance Filter</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:8px;line-height:1.4">Set a max delivery distance per branch. Orders above the cap are excluded.</div>
+    <div id="dist-sliders"></div>
+  </div>
+
+  <div class="sb-foot">
+    <button class="reset-btn" onclick="doReset()"> Reset to defaults</button>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="pg-hdr">
+    <div>
+      <div class="pg-title">Tmart Hybrid Shift Planner</div>
+      <div class="pg-sub" id="page-sub">Demand coverage · Rider allocation · Hourly UTR</div>
+    </div>
+    <div class="pg-badges">
+      <div class="f-badge">Showing <b id="fc">—</b> of <b id="tc">—</b> branches</div>
+      <div class="ord-badge" id="ord-badge">100% orders</div>
+      <div class="stk-badge" id="stk-badge">Stacking ON</div>
+      <div class="ns-badge" id="ns-badge">0% absent</div>
+      <div class="utr-cap-badge" id="utr-cap-badge">UTR cap off</div>
+      <div class="dist-badge" id="dist-badge">Dist filter off</div>
+    </div>
+  </div>
+
+  <div class="kpi-strip">
+    <div class="kpi"><div class="kpi-lbl">COMBINED COVERAGE</div><div class="kpi-val" id="kv-cov" style="color:var(--ov)">—</div><div class="kpi-sub">of scaled orders</div></div>
+    <div class="kpi"><div class="kpi-lbl">SHIFT 1 COVERAGE</div><div class="kpi-val" id="kv-s1" style="color:var(--s1)">—</div><div class="kpi-sub" id="ks1w">—</div></div>
+    <div class="kpi"><div class="kpi-lbl">SHIFT 2 COVERAGE</div><div class="kpi-val" id="kv-s2" style="color:var(--s2)">—</div><div class="kpi-sub" id="ks2w">—</div></div>
+    <div class="kpi" id="kpi3"><div class="kpi-lbl">SHIFT 3 COVERAGE</div><div class="kpi-val" id="kv-s3" style="color:var(--s3)">—</div><div class="kpi-sub" id="ks3w">—</div></div>
+    <div class="kpi"><div class="kpi-lbl">TOTAL RIDERS</div><div class="kpi-val" id="kv-rid" style="color:var(--text)">—</div><div class="kpi-sub" id="ks2p">—</div></div>
+  </div>
+
+  <div class="sec-ttl">Fleet demand overview</div>
+  <div class="chart-row">
+    <div class="chart-card">
+      <div class="card-ttl">HOURLY ORDER SHARE — SELECTED BRANCHES <span id="fleet-ord-note" style="color:var(--eve);font-weight:400"></span></div>
+      <div class="leg" id="fleet-leg"></div>
+      <div class="chart-wrap"><canvas id="fleetC"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="card-ttl">COVERAGE BREAKDOWN PER BRANCH</div>
+      <div class="leg" id="cov-leg"></div>
+      <div class="chart-wrap"><canvas id="covC"></canvas></div>
+    </div>
+  </div>
+
+  <div class="sec-ttl">Branch shift plan</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr id="tbl-head">
+        <th>Branch</th><th>Profile</th><th>Shift 1</th><th>Shift 2</th><th id="th-s3" style="display:none">Shift 3</th>
+        <th>S1 Riders</th>
+        <th>S2 Riders</th>
+        <th id="th-s3r" style="display:none">S3 Riders</th>
+        <th>Total</th>
+        <th>Avg Daily Orders</th><th>Covered Orders</th>
+        <th>S1 Only</th><th>Overlap</th><th>S2 Only</th>
+        <th id="th-s3-col" style="display:none">S3 Only</th>
+        <th>Combined</th><th id="th-overcap" style="display:none">Over-cap</th><th>Uncovered</th>
+        <th>UTR / Shift</th>
+        <th>Peak UTR</th><th>Stk UTR</th><th>Avg UTR</th><th>Coverage</th>
+      </tr></thead>
+      <tbody id="tbl-body"></tbody>
+      <tfoot id="tbl-foot"></tfoot>
+    </table>
+  </div>
+
+  <div class="sec-ttl">Per-branch demand &amp; hourly UTR</div>
+  <div class="bc-grid" id="bc-grid"></div>
+</main>
+</div>
+
+<script>
+let branches = [];
+let activeBr = new Set();
+
+const branchCfg = {};
+const DEF_S = [{s:9,e:19},{s:14,e:24},{s:20,e:30}];
+const DEF_NSHIFTS = 2;
+
+let nShifts = DEF_NSHIFTS;
+let S = JSON.parse(JSON.stringify(DEF_S));
+let editingBranch = null;
+
+let orderPct = 100;
+let stkOn = false;
+let stkRate = 25;
+let noShowPct = 0;
+let maxUTR = 0;
+
+// Hybrid Fleet dropoff-distance caps (km) per branch, per ops config.
+const DEFAULT_DIST_CAP = {
+  'Talabat Mart , Old Al Rayyan': 5.0,
+  'talabat mart, Abu Hamour': 6.0,
+  'Talabat Mart, Al Khor': 11.0,
+  'talabat mart, Al manaseer': 3.5,
+  'talabat mart, Al Thumama': 5.0,
+  'talabat mart, Al Wakrah': 4.0,
+  'talabat mart, Bin Omran': 5.0,
+  'talabat mart, Lusail': 5.0,
+  'talabat mart,  Muntazh (new location)': 3.5,
+  'talabat mart, Umm Salal Ali': 5.0,
+  'talabat mart, Umm Salal Mohammed': 5.0
+};
+function normBranch(name){ return (name||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+const DEFAULT_DIST_CAP_NORM = {};
+Object.keys(DEFAULT_DIST_CAP).forEach(k => { DEFAULT_DIST_CAP_NORM[normBranch(k)] = DEFAULT_DIST_CAP[k]; });
+function getDefaultDistCap(name){ return DEFAULT_DIST_CAP_NORM[normBranch(name)] || 0; }
+
+let distFilter = {};
+
+let fleetChart=null, covChart=null;
+const SC={};
+
+document.addEventListener('DOMContentLoaded', () => {
+  buildSelects();
+  setNShifts(2);
+  loadInitialData();
+});
+
+function loadDataForDateRange() {
+  const from = document.getElementById('date-from').value;
+  const to = document.getElementById('date-to').value;
+  const country = document.getElementById('country-select').value;
+
+  if (!from || !to) { alert('Please select both dates'); return; }
+
+  const pageSub = document.getElementById('page-sub');
+  pageSub.textContent = `Loading data from ${from} to ${to} for ${country}...`;
+  pageSub.style.color = 'var(--text2)';
+
+  google.script.run.withSuccessHandler(data => {
+    if (data.error) {
+       pageSub.textContent = 'BigQuery Error: ' + data.error;
+       pageSub.style.color = 'var(--unc)';
+       branches = [];
+    } else {
+       branches = data.branches || [];
+       if (branches.length === 0) {
+          pageSub.textContent = 'Date: ' + data.queryDate + ' · No data available (ETL may be delayed)';
+       } else {
+          pageSub.textContent = 'Date: ' + data.queryDate + ' · ' + branches.length + ' branches';
+          activeBr = new Set(branches.map(b => b.name));
+       }
+    }
+    buildChips(); buildSliders(); buildDistSliders(); render();
+  }).getInitialData({ from, to, country });
+}
+
+function loadInitialData() {
+  const toDate = new Date();
+  const fromDate = new Date();
+  fromDate.setDate(toDate.getDate() - 6);
+
+  document.getElementById('date-to').valueAsDate = toDate;
+  document.getElementById('date-from').valueAsDate = fromDate;
+  document.getElementById('country-select').value = 'QA';
+
+  const pageSub = document.getElementById('page-sub');
+  pageSub.textContent = 'Loading initial data...';
+
+  google.script.run.withSuccessHandler(data => {
+    if (data.error) {
+       pageSub.textContent = 'BigQuery Error: ' + data.error;
+       pageSub.style.color = 'var(--unc)';
+       branches = [];
+    } else {
+       branches = data.branches || [];
+       if (branches.length === 0) {
+          pageSub.textContent = 'Date: ' + data.queryDate + ' · No data available (ETL may be delayed)';
+       } else {
+          pageSub.textContent = 'Date: ' + data.queryDate + ' · ' + branches.length + ' branches';
+          activeBr = new Set(branches.map(b => b.name));
+       }
+    }
+    buildChips(); buildSliders(); buildDistSliders(); render();
+  }).getInitialData({ from: document.getElementById('date-from').value, to: document.getElementById('date-to').value, country: 'QA' });
+}
+
+function exportConfiguration() {
+  let csv = 'Branch,Shift,Start,End,Riders\n';
+  branches.forEach(b => {
+    const cfg = getDefCfg(b.name);
+    const r = splitRiders(b, cfg);
+    if (cfg.nShifts >= 1) csv += `${b.name},1,${fmtH(cfg.S[0].s)},${fmtH(cfg.S[0].e)},${r.r1}\n`;
+    if (cfg.nShifts >= 2) csv += `${b.name},2,${fmtH(cfg.S[1].s)},${fmtH(cfg.S[1].e)},${r.r2}\n`;
+    if (cfg.nShifts >= 3) csv += `${b.name},3,${fmtH(cfg.S[2].s)},${fmtH(cfg.S[2].e)},${r.r3||0}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `tmart_shift_plan_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+function getDefCfg(name){
+  const def = branches.find(d=>d.name===name);
+  return branchCfg[name] || {
+    nShifts: DEF_NSHIFTS,
+    S: JSON.parse(JSON.stringify(DEF_S)),
+    manualRiders: null,
+    riders: def ? def.riders : 10
+  };
+}
+
+function saveCfg(name){
+  const def = branches.find(d=>d.name===name) || {riders:10};
+  if(!branchCfg[name]) branchCfg[name]={manualRiders:null, riders: def.riders};
+  branchCfg[name].nShifts = nShifts;
+  branchCfg[name].S = JSON.parse(JSON.stringify(S));
+}
+
+function loadCfgToSidebar(name){
+  const cfg = getDefCfg(name);
+  nShifts = cfg.nShifts;
+  S = JSON.parse(JSON.stringify(cfg.S));
+  document.getElementById('s1s').value=S[0].s; document.getElementById('s1e').value=S[0].e;
+  document.getElementById('s2s').value=S[1].s; document.getElementById('s2e').value=S[1].e;
+  document.getElementById('s3s').value=S[2].s; document.getElementById('s3e').value=S[2].e;
+  [1,2,3].forEach(k=>document.getElementById(`sc${k}`).classList.toggle('on',k===nShifts));
+  document.getElementById('blk2').classList.toggle('hidden',nShifts<2);
+  document.getElementById('blk3').classList.toggle('hidden',nShifts<3);
+  document.getElementById('kpi3').style.display=nShifts>=3?'':'none';
+
+  // Align table headers
+  const th3=document.getElementById('th-s3'); const th3r=document.getElementById('th-s3r'); const th3col=document.getElementById('th-s3-col');
+  if(th3) th3.style.display=nShifts>=3?'':'none';
+  if(th3r) th3r.style.display=nShifts>=3?'':'none';
+  if(th3col) th3col.style.display=nShifts>=3?'':'none';
+}
+
+function loadFleetDefaults(){
+  nShifts = DEF_NSHIFTS;
+  S = JSON.parse(JSON.stringify(DEF_S));
+  document.getElementById('s1s').value=S[0].s; document.getElementById('s1e').value=S[0].e;
+  document.getElementById('s2s').value=S[1].s; document.getElementById('s2e').value=S[1].e;
+  document.getElementById('s3s').value=S[2].s; document.getElementById('s3e').value=S[2].e;
+  [1,2,3].forEach(k=>document.getElementById(`sc${k}`).classList.toggle('on',k===nShifts));
+  document.getElementById('blk2').classList.toggle('hidden',nShifts<2);
+  document.getElementById('blk3').classList.toggle('hidden',nShifts<3);
+}
+
+const manualRiders = {
+  get(name){ return branchCfg[name]?.manualRiders || null; },
+  set(name, val){
+    if(!branchCfg[name]) branchCfg[name]={nShifts:DEF_NSHIFTS,S:JSON.parse(JSON.stringify(DEF_S)),riders:(branches.find(d=>d.name===name)||{riders:10}).riders};
+    branchCfg[name].manualRiders=val;
+  },
+  has(name){ return !!(branchCfg[name] && branchCfg[name].manualRiders); },
+  delete(name){ if(branchCfg[name]) branchCfg[name].manualRiders=null; }
+};
+
+const HRL=Array.from({length:24},(_,i)=>{const h=i===0?12:i>12?i-12:i;return`${h}${i<12?'AM':'PM'}`});
+function fmtH(h){h=((h%24)+24)%24;const ap=h<12?'AM':'PM';const d=h===0?12:h>12?h-12:h;return`${d}:00 ${ap}`}
+function fmtShift(s,e){return`${fmtH(s)}–${fmtH(e)}`}
+function inSh(i,s,e){
+  if(e>24){ return i>=s || i<(e-24); }
+  return i>=s && i<e;
+}
+
+function scaledPct(rawPct){ return rawPct.map(v=>+(v*orderPct/100).toFixed(4)); }
+function stackedDemand(scaledVal){
+  if(!stkOn) return scaledVal;
+  return +(scaledVal * (1 - stkRate/200)).toFixed(4);
+}
+
+function barColor(i, bS, bN){
+  const bs=bS||S; const bn=bN!=null?bN:nShifts;
+  const a=bn>=1&&inSh(i,bs[0].s,bs[0].e);
+  const b=bn>=2&&inSh(i,bs[1].s,bs[1].e);
+  const c=bn>=3&&inSh(i,bs[2].s,bs[2].e);
+  const cnt=(a?1:0)+(b?1:0)+(c?1:0);
+  if(cnt>=2)return'#3fb950';if(a)return'#388bfd';if(b)return'#f0883e';if(c)return'#bc8cff';return'#f85149';
+}
+
+function splitRiders(b, bCfg){
+  const cfg=bCfg||getDefCfg(b.name);
+  const mr=cfg.manualRiders;
+  if(mr) return{r1:mr.r1||0,r2:mr.r2||0,r3:mr.r3||0};
+  const bn=cfg.nShifts; const bs=cfg.S;
+  if(bn===1) return{r1:b.riders,r2:0,r3:0};
+  const w=[];
+  for(let k=0;k<bn;k++) w.push((b.pct||[]).slice(bs[k].s,Math.min(bs[k].e,24)).reduce((a,c)=>a+c,0));
+  const wt=w.reduce((a,c)=>a+c,0)||1;
+  const rs=w.map(wi=>Math.max(1,Math.round(b.riders*wi/wt)));
+  let diff=b.riders-rs.reduce((a,c)=>a+c,0);
+  if(diff!==0)rs[1]=(rs[1]||0)+diff;
+  return{r1:rs[0]||0,r2:rs[1]||0,r3:rs[2]||0};
+}
+
+function ridersAtHour(r1,r2,r3, bCfg){
+  const cfg=bCfg||{nShifts,S};
+  const bn=cfg.nShifts; const bs=cfg.S;
+  const eff1=Math.max(0,Math.floor(r1*(1-noShowPct/100)));
+  const eff2=Math.max(0,Math.floor(r2*(1-noShowPct/100)));
+  const eff3=Math.max(0,Math.floor(r3*(1-noShowPct/100)));
+  return Array.from({length:24},(_,i)=>{
+    let n=0;
+    if(bn>=1&&inSh(i,bs[0].s,bs[0].e))n+=eff1;
+    if(bn>=2&&inSh(i,bs[1].s,bs[1].e))n+=eff2;
+    if(bn>=3&&inSh(i,bs[2].s,bs[2].e))n+=eff3;
+    return n;
+  });
+}
+
+function getCov(pct, bCfg, rah){
+  const cfg=bCfg||{nShifts,S};
+  const bn=cfg.nShifts; const bs=cfg.S;
+  let s1=0,s2=0,s3=0,ov=0,unc=0,overCap=0;
+  pct.forEach((v,i)=>{
+    const a=bn>=1&&inSh(i,bs[0].s,bs[0].e);
+    const b=bn>=2&&inSh(i,bs[1].s,bs[1].e);
+    const c=bn>=3&&inSh(i,bs[2].s,bs[2].e);
+    const cnt=(a?1:0)+(b?1:0)+(c?1:0);
+    const inAny = cnt > 0;
+
+    if(!inAny){ unc+=v; return; }
+
+    if(maxUTR > 0 && rah){
+      const ridersHere = rah[i] || 0;
+      if(ridersHere > 0){
+        const absorbFrac = rah._absorbFrac ? rah._absorbFrac[i] : 1;
+        const absorbed = v * absorbFrac;
+        const spill = v - absorbed;
+        overCap += spill;
+        if(cnt>=2) ov+=absorbed;
+        else if(a) s1+=absorbed;
+        else if(b) s2+=absorbed;
+        else if(c) s3+=absorbed;
+        return;
+      }
+    }
+
+    if(cnt>=2)ov+=v;
+    else if(a)s1+=v;else if(b)s2+=v;else if(c)s3+=v;
+  });
+  return{s1,s2,s3,ov,unc,overCap,combined:s1+s2+s3+ov};
+}
+
+function classify(pct){
+  if(!pct || pct.length === 0) return 'std';
+  const e=pct.slice(18,24).reduce((a,c)=>a+c,0)/pct.reduce((a,c)=>a+c,0);
+  return e>0.38?'eve':e>0.32?'bal':'std';
+}
+
+function distFraction(branchName, hour, distCap, avgDist){
+  if(distCap<=0) return 1;
+  return avgDist>0 ? Math.min(1, distCap/avgDist) : 1;
+}
+
+function hourlyUTR(b, rah){
+  const ordersRaw = b.orders || new Array(24).fill(0);
+  const distRaw = b.dist || new Array(24).fill(0);
+  const distCap = distFilter[b.name] || 0;
+  const stkUTRMult = stkOn ? (1 + stkRate/100) : 1;
+
+  return ordersRaw.map((rawOrders, i) => {
+    if(rah[i] === 0) return null;
+    const frac = distFraction(b.name, i, distCap, distRaw[i]);
+    const effOrders = rawOrders * (orderPct/100) * frac;
+    const utr = effOrders / rah[i];
+    return +Math.min(20, utr * stkUTRMult).toFixed(2);
+  });
+}
+
+function avgUTRPerShift(adjU, cfg){
+  const bn=cfg.nShifts; const bs=cfg.S;
+  const result=[];
+  for(let k=0;k<bn;k++){
+    const vals=adjU.filter((v,i)=>v!==null&&inSh(i,bs[k].s,bs[k].e));
+    result.push(vals.length ? +(vals.reduce((a,c)=>a+c,0)/vals.length).toFixed(2) : null);
+  }
+  return result;
+}
+
+function buildSelects(){
+  ['s1s','s1e','s2s','s2e','s3s','s3e'].forEach(id=>{
+    const el=document.getElementById(id);el.innerHTML='';
+    for(let h=0;h<=35;h++){
+      const o=document.createElement('option');o.value=h;
+      const hh=h%24,ap=hh<12?'AM':'PM',d=hh===0?12:hh>12?hh-12:hh;
+      o.textContent=h>=24?`${d}:00 ${ap}(+1)`:`${d}:00 ${ap}`;el.appendChild(o);
+    }
+  });
+  const ids=['s1s','s1e','s2s','s2e','s3s','s3e'];
+  const defs=[S[0].s,S[0].e,S[1].s,S[1].e,S[2].s,S[2].e];
+  ids.forEach((id,i)=>document.getElementById(id).value=defs[i]);
+  ids.forEach(id=>document.getElementById(id).onchange=()=>{
+    S[0].s=+document.getElementById('s1s').value;S[0].e=+document.getElementById('s1e').value;
+    S[1].s=+document.getElementById('s2s').value;S[1].e=+document.getElementById('s2e').value;
+    S[2].s=+document.getElementById('s3s').value;S[2].e=+document.getElementById('s3e').value;
+    if(editingBranch) saveCfg(editingBranch);
+    render();
+  });
+}
+
+document.getElementById('ord-slider').oninput=function(){
+  orderPct=+this.value;
+  document.getElementById('ord-val').textContent=orderPct+'%';
+  document.getElementById('ord-hint').textContent=orderPct+'%';
+  this.style.background=`linear-gradient(to right,var(--eve) 0%,var(--eve) ${orderPct}%,var(--border2) ${orderPct}%,var(--border2) 100%)`;
+  render();
+};
+
+document.getElementById('stk-toggle').onchange=function(){
+  stkOn=this.checked;
+  const rr=document.getElementById('stk-rate-row');
+  rr.style.opacity=stkOn?'1':'0.4';rr.style.pointerEvents=stkOn?'auto':'none';
+  render();
+};
+document.getElementById('stk-rate').oninput=function(){
+  stkRate=+this.value;
+  document.getElementById('stk-val').textContent=stkRate+'%';
+  render();
+};
+
+document.getElementById('utr-cap-slider').oninput=function(){
+  const raw=+this.value;
+  maxUTR = raw===0 ? 0 : +(raw/10).toFixed(1);
+  if(maxUTR>0){
+    document.getElementById('utr-cap-val').textContent=maxUTR.toFixed(1);
+    this.style.background=`linear-gradient(to right,var(--s3) 0%,var(--s3) ${raw/40*100}%,var(--border2) ${raw/40*100}%,var(--border2) 100%)`;
+  } else {
+    document.getElementById('utr-cap-val').textContent='No cap';
+    this.style.background='';
+  }
+  render();
+};
+
+document.getElementById('ns-slider').oninput=function(){
+  noShowPct=+this.value;
+  document.getElementById('ns-val').textContent=noShowPct+'%';
+  if(noShowPct>0){
+    document.getElementById('ns-breakdown').style.display='grid';
+  } else {
+    document.getElementById('ns-breakdown').style.display='none';
+  }
+  this.style.background=`linear-gradient(to right,var(--unc) 0%,var(--unc) ${noShowPct*2}%,var(--border2) ${noShowPct*2}%,var(--border2) 100%)`;
+  render();
+};
+
+function setNShifts(n){
+  nShifts=n;
+  [1,2,3].forEach(k=>document.getElementById(`sc${k}`).classList.toggle('on',k===n));
+  document.getElementById('blk2').classList.toggle('hidden',n<2);
+  document.getElementById('blk3').classList.toggle('hidden',n<3);
+  document.getElementById('kpi3').style.display=n>=3?'':'none';
+
+  if(n<3) Object.keys(branchCfg).forEach(k=>{if(branchCfg[k]?.manualRiders) branchCfg[k].manualRiders.r3=0;});
+  if(editingBranch){ saveCfg(editingBranch); }
+  render();
+}
+
+function buildChips(){
+  const row=document.getElementById('chip-row');row.innerHTML='';
+  branches.forEach(b=>{
+    const ch=document.createElement('span');
+    ch.className='chip'+(activeBr.has(b.name)?' on':'');
+    ch.textContent=b.name;
+    ch.onclick=()=>{
+      activeBr.has(b.name)?activeBr.delete(b.name):activeBr.add(b.name);
+      ch.classList.toggle('on');
+      const sel=[...activeBr];
+      if(sel.length===1){
+        editingBranch=sel[0];
+        loadCfgToSidebar(editingBranch);
+        updateSidebarLabel(editingBranch);
+      } else {
+        editingBranch=null;
+        updateSidebarLabel(null);
+      }
+      render();
+    };
+    row.appendChild(ch);
+  });
+}
+
+function updateSidebarLabel(name){
+  const lbl=document.getElementById('sidebar-branch-label');
+  const banner=document.getElementById('edit-banner');
+  const bannerTitle=document.getElementById('edit-banner-title');
+  if(name){
+    if(lbl){lbl.textContent='Editing: '+name;lbl.style.color='var(--eve)';}
+    if(banner) banner.classList.add('active');
+    if(bannerTitle) bannerTitle.textContent='Editing: '+name;
+  } else {
+    if(lbl){lbl.textContent='Fleet defaults';lbl.style.color='var(--text3)';}
+    if(banner) banner.classList.remove('active');
+  }
+}
+
+function focusBranch(name){
+  editingBranch=name;
+  activeBr=new Set([name]);
+  buildChips();
+  loadCfgToSidebar(name);
+  updateSidebarLabel(name);
+  const b=branches.find(x=>x.name===name);
+  const bIdx=branches.findIndex(x=>x.name===name);
+  if(b && bIdx>=0){
+    const rs=document.getElementById('rs'+bIdx);
+    const rc=document.getElementById('rc'+bIdx);
+    const cfg=getDefCfg(name);
+    const {r1,r2,r3}=splitRiders(b,cfg);
+    const tot=r1+r2+(r3||0);
+    if(rs)rs.value=Math.min(80,tot);
+    if(rc)rc.textContent=tot;
+  }
+  render();
+  document.getElementById('edit-banner').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function saveCurrentBranch(){
+  if(!editingBranch) return;
+  saveCfg(editingBranch);
+  const btn=document.querySelector('.edit-save-btn');
+  if(btn){const orig=btn.textContent;btn.textContent=' Saved!';btn.style.background='var(--ov-dim)';btn.style.borderColor='var(--ov)';btn.style.color='var(--ov)';setTimeout(()=>{btn.textContent=orig;btn.style.background='';btn.style.borderColor='';btn.style.color='';},1200);}
+  render();
+}
+
+function resetCurrentBranch(){
+  if(!editingBranch) return;
+  delete branchCfg[editingBranch];
+  loadFleetDefaults();
+  render();
+}
+
+function allBranches(){activeBr=new Set(branches.map(b=>b.name));editingBranch=null;updateSidebarLabel(null);buildChips();render()}
+function clearBranches(){activeBr.clear();editingBranch=null;updateSidebarLabel(null);buildChips();render()}
+
+function buildSliders(){
+  const c=document.getElementById('sliders');c.innerHTML='';
+  branches.forEach((b,i)=>{
+    const d=document.createElement('div');d.className='r-item';
+    d.innerHTML=`<div class="r-row"><span class="r-name">${b.name}</span><span class="r-cnt" id="rc${i}">${b.riders}</span></div><input type="range" class="r-slide" min="1" max="80" step="1" value="${b.riders}" id="rs${i}">`;
+    c.appendChild(d);
+    d.querySelector(`#rs${i}`).oninput=e=>{branches[i].riders=+e.target.value;document.getElementById(`rc${i}`).textContent=e.target.value;render()};
+  });
+}
+
+function buildDistSliders(){
+  const c=document.getElementById('dist-sliders');
+  if(!c) return;
+  c.innerHTML='';
+  branches.forEach((b,i)=>{
+    if(distFilter[b.name]===undefined){
+      distFilter[b.name]=getDefaultDistCap(b.name);
+    }
+    const cur=distFilter[b.name]||0;
+    const distArr=b.dist||[];
+    const activeDists=distArr.filter(v=>v>0);
+    const avgDist=activeDists.length?+(activeDists.reduce((a,x)=>a+x,0)/activeDists.length).toFixed(1):0;
+
+    const d=document.createElement('div');
+    d.className='dist-item';
+    d.innerHTML=`
+      <div class="dist-row">
+        <span class="dist-name">${b.name}</span>
+        <span style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace">avg ${avgDist} km</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+        <input type="number" id="di${i}" min="0" max="9999" step="1"
+          placeholder="No cap" value="${cur||''}"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;
+                 color:${cur>0?'var(--ov)':'var(--text)'};font-family:'DM Mono',monospace;
+                 font-size:12px;padding:4px 7px;width:100%">
+        <span style="font-size:11px;color:var(--text3);flex-shrink:0">km</span>
+        <button id="dc${i}" title="Clear" style="background:none;border:none;cursor:pointer;
+          color:var(--text3);font-size:13px;flex-shrink:0;padding:0;line-height:1"
+          onclick="clearDistFilter(${i})">✕</button>
+      </div>`;
+    c.appendChild(d);
+
+    const inp=d.querySelector(`#di${i}`);
+    const updateDist=()=>{
+      const v=inp.value.trim()===''?0:Math.max(0,+inp.value||0);
+      distFilter[b.name]=v>0?v:0;
+      inp.style.color=v>0?'var(--ov)':'var(--text)';
+      inp.style.borderColor=v>0?'var(--ov)':'var(--border2)';
+      render();
+    };
+    inp.addEventListener('change', updateDist);
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter') updateDist(); });
+  });
+}
+
+function clearDistFilter(i){
+  const b=branches[i];
+  if(!b) return;
+  distFilter[b.name]=0;
+  const inp=document.getElementById(`di${i}`);
+  if(inp){inp.value='';inp.style.color='var(--text)';inp.style.borderColor='var(--border2)';}
+  render();
+}
+
+function render(){
+  const vis=branches.filter(b=>activeBr.has(b.name));
+  document.getElementById('fc').textContent=vis.length;
+  document.getElementById('tc').textContent=branches.length;
+
+  const distBadge=document.getElementById('dist-badge');
+  if(distBadge){
+    const cappedCount=vis.filter(b=>(distFilter[b.name]||0)>0).length;
+    if(cappedCount>0){
+      distBadge.classList.add('on');
+      distBadge.textContent=`Dist cap: ${cappedCount}/${vis.length} branches`;
+    } else {
+      distBadge.classList.remove('on');
+      distBadge.textContent='Dist filter off';
+    }
+  }
+
+  const thS3 = document.getElementById('th-s3');
+  const thS3R = document.getElementById('th-s3r');
+  const thS3C = document.getElementById('th-s3-col');
+  const thOC = document.getElementById('th-overcap');
+
+  if(thS3) thS3.style.display = nShifts >= 3 ? '' : 'none';
+  if(thS3R) thS3R.style.display = nShifts >= 3 ? '' : 'none';
+  if(thS3C) thS3C.style.display = nShifts >= 3 ? '' : 'none';
+  if(thOC) thOC.style.display = maxUTR > 0 ? '' : 'none';
+
+  const comp=vis.map(b=>{
+    const cfg=getDefCfg(b.name);
+    const sp=scaledPct(b.pct || []);
+    const {r1,r2,r3}=splitRiders(b, cfg);
+    const rah=ridersAtHour(r1,r2,r3, cfg);
+
+    const ordersRaw=b.orders||new Array(24).fill(0);
+    const stkMult2=stkOn?(1-stkRate/200):1;
+    if(maxUTR>0){
+      rah._absorbFrac=ordersRaw.map((rawTotal,i)=>{
+        if(rah[i]===0) return 0;
+        const frac2=distFraction(b.name, i, distFilter[b.name]||0, (b.dist||[])[i]||0);
+        const effOrders=rawTotal*(orderPct/100)*stkMult2*frac2;
+        if(effOrders<=0) return 1;
+        return Math.min(1, (rah[i]*maxUTR)/effOrders);
+      });
+    } else {
+      rah._absorbFrac=null;
+    }
+
+    const adjU=hourlyUTR(b,rah);
+    const adjUStkPairs=adjU.map(v=>v===null?null:{base:v,stk:v});
+    const cov=getCov(sp, cfg, rah);
+    const tot=cov.combined+cov.unc;
+    const prof=classify(b.pct);
+    const active=adjU.filter(v=>v!==null);
+    const avgU=active.length?active.reduce((a,c)=>a+c,0)/active.length:0;
+    const peakU=active.length?Math.max(...active):0;
+    const utrPerShift=avgUTRPerShift(adjU, cfg);
+    const stkActive=adjUStkPairs.filter(p=>p!==null).map(p=>p.stk);
+    const peakUSt=stkActive.length?Math.max(...stkActive):0;
+
+    const distCap=distFilter[b.name]||0;
+    const dailyAvgHr=ordersRaw.map((v,i)=>{
+      const frac=distFraction(b.name,i,distCap,(b.dist||[])[i]||0);
+      return +(v*(orderPct/100)*frac).toFixed(1);
+    });
+
+    const dailyTotal=+dailyAvgHr.reduce((a,c)=>a+c,0).toFixed(0);
+    const coveredOrders=+dailyAvgHr.reduce((a,v,i)=>{
+      const bn=cfg.nShifts; const bs=cfg.S;
+      const inAny=(bn>=1&&inSh(i,bs[0].s,bs[0].e))||(bn>=2&&inSh(i,bs[1].s,bs[1].e))||(bn>=3&&inSh(i,bs[2].s,bs[2].e));
+      return a+(inAny?v:0);
+    },0).toFixed(0);
+
+    return{...b,cfg,sp,r1,r2,r3,rah,adjU,adjUStkPairs,cov,tot,prof,
+      dailyAvgHr,dailyTotal,coveredOrders:+coveredOrders,
+      utrPerShift,
+      s1p:tot>0?cov.s1/tot*100:0,ovp:tot>0?cov.ov/tot*100:0,s2p:tot>0?cov.s2/tot*100:0,s3p:tot>0?(cov.s3||0)/tot*100:0,
+      overCapP:tot>0?(cov.overCap||0)/tot*100:0,
+      covp:tot>0?cov.combined/tot*100:0,
+      trueCovP:tot>0?(cov.combined-(cov.overCap||0))/tot*100:0,
+      uncp:tot>0?cov.unc/tot*100:0,avgU,peakU,peakUSt};
+  });
+
+  const n=comp.length||1;
+  const fCov=comp.reduce((a,c)=>a+c.covp,0)/n;
+  const fS1=comp.reduce((a,c)=>a+c.s1p,0)/n;
+  const fOv=comp.reduce((a,c)=>a+c.ovp,0)/n;
+  const fS2=comp.reduce((a,c)=>a+c.s2p,0)/n;
+  const fUnc=comp.reduce((a,c)=>a+c.uncp,0)/n;
+  const totR=comp.reduce((a,c)=>a+c.riders,0);
+  const totR2=comp.reduce((a,c)=>a+c.r2,0);
+  const totR1=comp.reduce((a,c)=>a+c.r1,0);
+  const totR3=comp.reduce((a,c)=>a+(c.r3||0),0);
+  const effR1=comp.reduce((a,c)=>a+Math.max(0,Math.floor(c.r1*(1-noShowPct/100))),0);
+  const effR2=comp.reduce((a,c)=>a+Math.max(0,Math.floor(c.r2*(1-noShowPct/100))),0);
+  const effR3=comp.reduce((a,c)=>a+Math.max(0,Math.floor((c.r3||0)*(1-noShowPct/100))),0);
+  const absentTotal=(totR1-effR1)+(totR2-effR2)+(totR3-effR3);
+
+  if(noShowPct>0){
+    const s1el=document.getElementById('ns-s1-eff');
+    const s2el=document.getElementById('ns-s2-eff');
+    const aEl=document.getElementById('ns-absent');
+    if(s1el) s1el.textContent=effR1+' / '+totR1;
+    if(s2el) s2el.textContent=effR2+' / '+totR2+(nShifts>=3?` + ${effR3}/${totR3}`:'');
+    if(aEl)  aEl.textContent=absentTotal;
+  }
+
+  document.getElementById('kv-cov').textContent=(maxUTR>0 ? comp.reduce((a,c)=>a+c.trueCovP,0)/n : fCov).toFixed(1)+'%';
+  document.getElementById('kv-s1').textContent=(fS1+fOv/2).toFixed(1)+'%';
+  document.getElementById('kv-s2').textContent=(fS2+fOv/2).toFixed(1)+'%';
+  if(document.getElementById('kv-s3')) document.getElementById('kv-s3').textContent=(comp.reduce((a,c)=>a+c.s3p,0)/n+fOv/2).toFixed(1)+'%';
+  document.getElementById('kv-rid').textContent=totR;
+  document.getElementById('ks1w').textContent=fmtShift(S[0].s,S[0].e);
+  document.getElementById('ks2w').textContent=fmtShift(S[1].s,S[1].e);
+  if(document.getElementById('ks3w')) document.getElementById('ks3w').textContent=fmtShift(S[2].s,S[2].e);
+
+  const legI=[['S1 only','#388bfd'],['Overlap','#3fb950'],['S2 only','#f0883e'],['Uncovered','#f85149']];
+  if(stkOn) legI.push(['Stacking effect','var(--stk)']);
+  if(maxUTR>0) legI.splice(3,0,['Over-cap (UTR>'+maxUTR.toFixed(1)+')',  '#d29922']);
+  const legH=legI.map(([l,c])=>`<span><span class="lb" style="background:${c}"></span>${l}</span>`).join('');
+  document.getElementById('fleet-leg').innerHTML=legH;
+  document.getElementById('cov-leg').innerHTML=legH.replace(/Stacking effect.*/,'');
+
+  const avgSP=new Array(24).fill(0);
+  comp.forEach(b=>b.sp.forEach((v,i)=>avgSP[i]+=v/n));
+  const avgSpStk=avgSP.map(v=>stackedDemand(v));
+
+  const demDs=[{type:'bar',data:avgSP.map(v=>+v.toFixed(3)),backgroundColor:avgSP.map((_,i)=>barColor(i,S,nShifts)),borderWidth:0,order:2}];
+  if(stkOn) demDs.push({type:'line',label:'Stacking relief',data:avgSpStk.map(v=>+v.toFixed(3)),borderColor:'rgba(232,121,249,0.8)',borderWidth:2,pointRadius:0,fill:false,tension:0.3,order:1});
+
+  if(fleetChart)fleetChart.destroy();
+  fleetChart=new Chart(document.getElementById('fleetC'),{
+    data:{labels:HRL,datasets:demDs},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{bodyColor:'#e6edf3',backgroundColor:'#1c2330',borderColor:'#2a3441',borderWidth:1,callbacks:{label:ctx=>`${ctx.dataset.label||'Orders'}: ${ctx.parsed.y.toFixed(3)}%`}}},
+      scales:{x:{ticks:{color:'#4d5966',font:{size:9},maxRotation:45,autoSkip:false},grid:{display:false}},
+              y:{ticks:{color:'#8b949e',font:{size:9},callback:v=>v.toFixed(1)+'%'},grid:{color:'rgba(255,255,255,0.04)'}}}}});
+
+  if(covChart)covChart.destroy();
+  covChart=new Chart(document.getElementById('covC'),{type:'bar',
+    data:{labels:comp.map(b=>b.name),datasets:[
+      {label:'S1 Only',data:comp.map(b=>+b.s1p.toFixed(1)),backgroundColor:'#388bfd',borderWidth:0},
+      {label:'Overlap',data:comp.map(b=>+b.ovp.toFixed(1)),backgroundColor:'#3fb950',borderWidth:0},
+      {label:'S2 Only',data:comp.map(b=>+b.s2p.toFixed(1)),backgroundColor:'#f0883e',borderWidth:0},
+      {label:'Uncovered',data:comp.map(b=>+b.uncp.toFixed(1)),backgroundColor:'#f85149',borderWidth:0},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`},bodyColor:'#e6edf3',backgroundColor:'#1c2330',borderColor:'#2a3441',borderWidth:1}},
+      scales:{x:{stacked:true,ticks:{color:'#4d5966',font:{size:9},maxRotation:35},grid:{display:false}},
+              y:{stacked:true,max:100,ticks:{color:'#8b949e',font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(255,255,255,0.04)'}}}}});
+
+
+  const tbody=document.getElementById('tbl-body');tbody.innerHTML='';
+  comp.forEach(b=>{
+    const pl=b.prof==='eve'?'Eve-heavy':b.prof==='bal'?'Balanced':'Standard';
+    const uc=b.uncp>12?'unc-hi':'unc-ok';
+    const auc=b.avgU>=2.2?'utr-hi':b.avgU>=1.8?'utr-md':b.avgU<1.5?'utr-lo':'utr-ok';
+    const puc=b.peakU>=2.4?'utr-hi':b.peakU>=2.0?'utr-md':'utr-ok';
+
+    const total90=90;
+    const trueCovFrac=(maxUTR>0?b.trueCovP:b.covp)/100;
+    const overCapFrac=b.overCapP/100;
+    const covScale=b.covp>0?trueCovFrac/(b.covp/100):1;
+    const s1w =Math.round(b.s1p /100*total90*covScale);
+    const ovw =Math.round(b.ovp /100*total90*covScale);
+    const s2w =Math.round(b.s2p /100*total90*covScale);
+    const s3w =Math.round((b.s3p||0)/100*total90*covScale);
+    const ocw =Math.round(overCapFrac*total90);
+    const uw  =Math.max(0, total90-s1w-ovw-s2w-s3w-ocw);
+
+    const isManual=!!manualRiders.has(b.name);
+    const totalUsed=b.r1+(b.cfg.nShifts>=2?b.r2:0)+(b.cfg.nShifts>=3?(b.r3||0):0);
+    const totalDiff=totalUsed-b.riders;
+    const totBadge=totalDiff===0
+      ?`<span class="total-badge total-ok">${totalUsed}</span>`
+      :totalDiff>0
+        ?`<span class="total-badge total-over">${totalUsed} (+${totalDiff})</span>`
+        :`<span class="total-badge total-warn">${totalUsed} (${totalDiff})</span>`;
+    const resetBtn=isManual?`<button class="reset-row-btn" title="Reset to auto-split" onclick="resetBranchRiders('${b.name}')">↺ auto</button>`:'';
+
+    const manCls=isManual?' manual':'';
+
+    const noStkPeak=stkOn?(()=>{
+      const v=(b.orders||[]).map((r,i)=>{
+        if(b.rah[i]===0) return null;
+        const frac3=distFraction(b.name,i,distFilter[b.name]||0,(b.dist||[])[i]||0);
+        return r*(orderPct/100)*frac3/b.rah[i];
+      }).filter(v=>v!==null);
+      return v.length?Math.max(...v).toFixed(2):'—';
+    })():'—';
+
+    const bcfg=b.cfg;
+    const savedTag=!!branchCfg[b.name]?`<span class="custom-tag">custom</span>`:'';
+
+    const utrShiftColors=['var(--s1)','var(--s2)','var(--s3)'];
+    const utrShiftLabels=['S1','S2','S3'];
+    const utrShiftHtml=`<div class="utr-shift-cell">${b.utrPerShift.map((v,k)=>{
+      if(v===null||v===undefined) return '';
+      const col=v>=2.4?'var(--unc)':v>=2.0?'var(--eve)':v>=1.4?'var(--ov)':'var(--text2)';
+      return `<div class="utr-shift-row"><span class="utr-dot" style="background:${utrShiftColors[k]}"></span><span style="color:${utrShiftColors[k]};font-size:9px">${utrShiftLabels[k]}</span><span style="color:${col}">${v.toFixed(2)}</span></div>`;
+    }).join('')}</div>`;
+
+    const tr=document.createElement('tr');
+    tr.setAttribute('data-branch',b.name);
+    tr.style.cursor='default';
+    tr.innerHTML=`<td style="font-weight:600;cursor:pointer;user-select:none" onclick="focusBranch('${b.name}')" title="Click to edit this branch in sidebar">${b.name}${savedTag}</td>
+      <td><span class="pbadge p-${b.prof}">${pl}</span></td>
+      <td><span class="spill p-s1">${fmtShift(bcfg.S[0].s,bcfg.S[0].e)}</span></td>
+      <td><span class="spill p-s2">${bcfg.nShifts>=2?fmtShift(bcfg.S[1].s,bcfg.S[1].e):'—'}</span></td>
+      <td style="display:${nShifts>=3?'':'none'}">${bcfg.nShifts>=3?`<span class="spill p-s3">${fmtShift(bcfg.S[2].s,bcfg.S[2].e)}</span>`:'—'}</td>
+      <td><input type="number" class="rider-input${manCls}" min="0" max="200" value="${b.r1}" data-branch="${b.name}" data-shift="r1"></td>
+      <td>${bcfg.nShifts>=2?`<input type="number" class="rider-input s2c${manCls}" min="0" max="200" value="${b.r2}" data-branch="${b.name}" data-shift="r2">`:'—'}</td>
+      <td style="display:${nShifts>=3?'':'none'}">${bcfg.nShifts>=3?`<input type="number" class="rider-input s3c${manCls}" min="0" max="200" value="${b.r3||0}" data-branch="${b.name}" data-shift="r3">`:'—'}</td>
+      <td>${totBadge}${resetBtn}</td>
+      <td class="mono" style="color:var(--text2)">${b.dailyTotal.toLocaleString()}</td>
+      <td class="mono" style="color:var(--ov)">${b.coveredOrders.toLocaleString()}</td>
+      <td class="mono" style="color:var(--s1)">${b.s1p.toFixed(1)}%</td>
+      <td class="mono" style="color:var(--ov)">${b.ovp.toFixed(1)}%</td>
+      <td class="mono" style="color:var(--s2)">${b.s2p.toFixed(1)}%</td>
+      <td class="mono" style="color:var(--s3);display:${nShifts>=3?'':'none'}">${(b.s3p||0).toFixed(1)}%</td>
+      <td class="mono" style="font-weight:700;color:${maxUTR>0?'var(--s3)':'var(--text)'}" title="${maxUTR>0?'Window: '+b.covp.toFixed(1)+'% | Absorbable: '+b.trueCovP.toFixed(1)+'%':''}">${(maxUTR>0?b.trueCovP:b.covp).toFixed(1)}%${maxUTR>0?`<span style="font-size:9px;color:var(--text3);font-weight:400;margin-left:3px">(${b.covp.toFixed(1)}% window)</span>`:''}</td>
+      <td class="mono" style="color:var(--eve);display:${maxUTR>0?'':'none'}">${b.overCapP.toFixed(1)}%</td>
+      <td class="${uc} mono">${b.uncp.toFixed(1)}%</td>
+      <td>${utrShiftHtml}</td>
+      <td class="${puc} mono">${b.peakU.toFixed(2)}</td>
+      <td class="mono" style="color:${stkOn?'var(--stk)':'var(--text3)'}">${noStkPeak}</td>
+      <td class="${auc} mono">${b.avgU.toFixed(2)}</td>
+      <td><div class="mini-stk">
+        <div class="mini-seg" style="width:${s1w}px;background:var(--s1)"></div>
+        <div class="mini-seg" style="width:${ovw}px;background:var(--ov)"></div>
+        <div class="mini-seg" style="width:${s2w}px;background:var(--s2)"></div>
+        <div class="mini-seg" style="width:${s3w}px;background:var(--s3)"></div>
+        <div class="mini-seg" style="width:${ocw}px;background:#d29922"></div>
+        <div class="mini-seg" style="width:${uw}px;background:var(--unc)"></div>
+      </div></td>`;
+    tbody.appendChild(tr);
+
+    tr.querySelectorAll('.rider-input').forEach(inp=>{
+      inp.addEventListener('change',function(){
+        const bn=this.getAttribute('data-branch');
+        const sh=this.getAttribute('data-shift');
+        const val=Math.max(0,Math.min(200,+this.value||0));
+        this.value=val;
+        const bObj=branches.find(x=>x.name===bn);
+        const cfg=getDefCfg(bn);
+        if(!cfg.manualRiders){
+          const auto=splitRiders(bObj, cfg);
+          cfg.manualRiders={r1:auto.r1,r2:auto.r2,r3:auto.r3||0};
+        }
+        cfg.manualRiders[sh]=val;
+        if(!branchCfg[bn]) branchCfg[bn]=cfg;
+        else branchCfg[bn].manualRiders=cfg.manualRiders;
+        const totalManual=(cfg.manualRiders.r1||0)+(cfg.manualRiders.r2||0)+(cfg.manualRiders.r3||0);
+        const bIdx=branches.findIndex(x=>x.name===bn);
+        if(bIdx>=0){const rc=document.getElementById('rc'+bIdx);if(rc)rc.textContent=totalManual;const rs=document.getElementById('rs'+bIdx);if(rs)rs.value=Math.min(80,totalManual);}
+        render();
+      });
+    });
+  });
+
+  const tf=document.getElementById('tbl-foot');
+  const totAll=comp.reduce((a,c)=>a+c.r1+(c.r2||0)+(c.r3||0),0);
+  const totDailyOrders=comp.reduce((a,c)=>a+c.dailyTotal,0);
+  const totCovOrders=comp.reduce((a,c)=>a+c.coveredOrders,0);
+
+  tf.innerHTML=`<td colspan="4">Fleet avg / total</td>
+    <td style="display:${nShifts>=3?'':'none'}"></td>
+    <td class="mono" style="color:var(--s1)">${comp.reduce((a,c)=>a+c.r1,0)}</td>
+    <td class="mono" style="color:var(--s2)">${comp.reduce((a,c)=>a+c.r2,0)}</td>
+    <td class="mono" style="color:var(--s3);display:${nShifts>=3?'':'none'}">${comp.reduce((a,c)=>a+(c.r3||0),0)}</td>
+    <td class="mono">${totAll}</td>
+    <td class="mono" style="color:var(--text2)">${totDailyOrders.toLocaleString()}</td>
+    <td class="mono" style="color:var(--ov)">${totCovOrders.toLocaleString()}</td>
+    <td class="mono" style="color:var(--s1)">${fS1.toFixed(1)}%</td>
+    <td class="mono" style="color:var(--ov)">${fOv.toFixed(1)}%</td>
+    <td class="mono" style="color:var(--s2)">${fS2.toFixed(1)}%</td>
+    <td class="mono" style="color:var(--s3);display:${nShifts>=3?'':'none'}">${(comp.reduce((a,c)=>a+(c.s3p||0),0)/n).toFixed(1)}%</td>
+    <td class="mono" style="font-weight:700;color:${maxUTR>0?'var(--s3)':'var(--text)'}">${(maxUTR>0 ? comp.reduce((a,c)=>a+c.trueCovP,0)/n : fCov).toFixed(1)}%</td>
+    <td class="mono" style="color:var(--eve);display:${maxUTR>0?'':'none'}">${(comp.reduce((a,c)=>a+c.overCapP,0)/n).toFixed(1)}%</td>
+    <td class="${fUnc>12?'unc-hi':'unc-ok'} mono">${fUnc.toFixed(1)}%</td>
+    <td colspan="5"></td>`;
+
+  const grid=document.getElementById('bc-grid');grid.innerHTML='';
+  comp.forEach(b=>{
+    const utrCols=b.adjU.map(v=>v===null?'#2a3441':v>=2.4?'#f85149':v>=2.1?'#d29922':v>=1.7?'#3fb950':'#388bfd');
+    const card=document.createElement('div');card.className='bc-card';
+    const dispCov=maxUTR>0?b.trueCovP:b.covp;
+    const covCol=dispCov>=90?'var(--ov)':'var(--eve)';
+    const bcfgCard=b.cfg;
+    const bn=bcfgCard.nShifts; const bs=bcfgCard.S;
+    const shStr=bn===1?`S1 ${fmtShift(bs[0].s,bs[0].e)}`:
+      bn===2?`S1 ${fmtShift(bs[0].s,bs[0].e)} · S2 ${fmtShift(bs[1].s,bs[1].e)}`:
+      `S1 ${fmtShift(bs[0].s,bs[0].e)} · S2 ${fmtShift(bs[1].s,bs[1].e)} · S3 ${fmtShift(bs[2].s,bs[2].e)}`;
+    const pucCol=b.peakU>=(maxUTR>0?maxUTR:2.4)?'var(--unc)':b.peakU>=2.0?'var(--eve)':'var(--ov)';
+    const rawPeakU = (() => {
+      const vals = (b.orders||[]).map((rawTotal,i) => {
+        if(b.rah[i]===0) return null;
+        const frac4=distFraction(b.name,i,distFilter[b.name]||0,(b.dist||[])[i]||0);
+        return rawTotal*(orderPct/100)*frac4/b.rah[i];
+      }).filter(v=>v!==null);
+      return vals.length ? Math.max(...vals).toFixed(2) : '—';
+    })();
+    const stkSuffix=stkOn?` · no-stk <span style="color:var(--stk)">${rawPeakU}</span>`:'';
+    const demNote=orderPct<100?` <span style="color:var(--eve)">(${orderPct}% vol)</span>`:'';
+    const distCapActive=distFilter[b.name]||0;
+    const distNote=distCapActive>0?` · <span style="color:var(--ov)">dist ≤${distCapActive}km</span>`:'';
+    const overCapNote=maxUTR>0&&b.overCapP>0?` · <span style="color:#d29922">${b.overCapP.toFixed(1)}% over-cap</span>`:'';
+    const effR1=Math.max(0,Math.floor(b.r1*(1-noShowPct/100)));
+    const effR2=Math.max(0,Math.floor(b.r2*(1-noShowPct/100)));
+    const effR3=Math.max(0,Math.floor((b.r3||0)*(1-noShowPct/100)));
+    const riderStr=noShowPct>0
+      ? `${b.riders} rostered → <span style="color:var(--unc)">${effR1+effR2+(bn>=3?effR3:0)} eff</span> (${effR1}/${bn>=2?effR2:'-'}${bn>=3?'/'+effR3:''})`
+      : `${b.riders} riders (${b.r1}/${bn>=2?b.r2:'-'}${bn>=3?'/'+b.r3:''})`;
+    card.innerHTML=`
+      <div class="bc-hdr">
+        <span class="bc-name">${b.name}</span>
+        <span class="bc-cov" style="color:${covCol}">${dispCov.toFixed(1)}%${maxUTR>0?` <span style="color:var(--text3)">(${b.covp.toFixed(1)}w)</span>`:''} · peak UTR <span style="color:${pucCol}">${b.peakU.toFixed(2)}</span>${stkSuffix}</span>
+      </div>
+      <div class="bc-meta">${shStr} · ${riderStr} · <span style="color:var(--text2)">~${b.dailyTotal.toLocaleString()} orders/day</span> · <span style="color:var(--ov)">${b.coveredOrders.toLocaleString()} covered</span>${overCapNote}${distNote}</div>
+      <div class="bc-row">
+        <div class="bc-lbl"><span>Avg daily orders / hr</span></div>
+        <div class="bc-wrap"><canvas id="ord_${b.name.replace(/[^a-zA-Z0-9]/g,'_')}"></canvas></div>
+      </div>
+      <div class="bc-row">
+        <div class="bc-lbl"><span>Order demand %${demNote}</span>${stkOn?`<span style="color:var(--stk)">— stacking relief line</span>`:''}</div>
+        <div class="bc-wrap"><canvas id="dem_${b.name.replace(/[^a-zA-Z0-9]/g,'_')}"></canvas></div>
+      </div>
+      <div class="bc-row">
+        <div class="utr-leg">
+          <span><span class="lb" style="background:#388bfd"></span>&lt;1.7</span>
+          <span><span class="lb" style="background:#3fb950"></span>1.7–2.1</span>
+          <span><span class="lb" style="background:#d29922"></span>2.1–2.4</span>
+          <span><span class="lb" style="background:#f85149"></span>&gt;2.4</span>
+          ${stkOn?`<span><span class="lb" style="background:var(--stk)"></span>w/o stacking</span>`:''}
+          ${maxUTR>0?`<span><span class="lb" style="background:var(--s3);opacity:.8"></span>cap ${maxUTR.toFixed(1)}</span>`:''}
+          <span style="margin-left:auto">baseline 1.4 ···</span>
+        </div>
+        <div class="bc-lbl"><span>UTR / hr${stkOn?' <span style="color:var(--stk)">(stacking applied)</span>':''}${maxUTR>0?` · <span style="color:var(--s3)">cap ${maxUTR.toFixed(1)} shown</span>`:''}</span></div>
+        <div class="bc-wrap"><canvas id="utr_${b.name.replace(/[^a-zA-Z0-9]/g,'_')}"></canvas></div>
+      </div>`;
+    grid.appendChild(card);
+
+    const k=b.name.replace(/[^a-zA-Z0-9]/g,'_');
+    ['dem_','utr_','ord_'].forEach(p=>{if(SC[p+k])try{SC[p+k].destroy()}catch(e){}});
+
+    const demDs2=[
+      {type:'bar',data:b.sp.map(v=>+v.toFixed(3)),backgroundColor:b.sp.map((_,i)=>barColor(i,b.cfg.S,b.cfg.nShifts)),borderWidth:0,order:2}
+    ];
+    if(stkOn) demDs2.push({type:'line',data:b.sp.map(v=>+stackedDemand(v).toFixed(3)),borderColor:'rgba(232,121,249,0.85)',borderWidth:1.5,pointRadius:0,fill:false,tension:0.3,order:1,label:'Stk relief'});
+
+    const baseO={responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{bodyColor:'#e6edf3',backgroundColor:'#1c2330',borderColor:'#2a3441',borderWidth:1}},
+      scales:{x:{ticks:{color:'#4d5966',font:{size:8},maxRotation:0,autoSkip:true,maxTicksLimit:6},grid:{display:false}},y:{display:false}}};
+
+    SC['dem_'+k]=new Chart(document.getElementById('dem_'+k),{
+      data:{labels:HRL,datasets:demDs2},
+      options:{...baseO,plugins:{...baseO.plugins,tooltip:{...baseO.plugins.tooltip,callbacks:{label:ctx=>`${ctx.dataset.label||'Orders'}: ${ctx.parsed.y.toFixed(3)}%`}}}}});
+
+    const utrWithoutStk = (b.orders||new Array(24).fill(0)).map((rawTotal,i)=>{
+      if(b.rah[i]===0) return 0;
+      return +Math.min(9, rawTotal*(orderPct/100)/b.rah[i]).toFixed(2);
+    });
+    const utrDs=[
+      {type:'bar',data:b.adjU.map(v=>v===null?0:+v.toFixed(2)),backgroundColor:utrCols,borderWidth:0,order:2,label:'UTR'},
+      {type:'line',data:new Array(24).fill(1.4),borderColor:'rgba(248,81,73,0.4)',borderWidth:1.5,borderDash:[3,3],pointRadius:0,fill:false,tension:0,order:1,label:'Baseline 1.4'}
+    ];
+    if(stkOn){
+      utrDs.push({type:'line',
+        data:utrWithoutStk,
+        borderColor:'rgba(232,121,249,0.85)',borderWidth:2,pointRadius:0,
+        fill:false,tension:0.3,order:0,label:'Without stacking'});
+    }
+    if(maxUTR>0){
+      utrDs.push({type:'line',
+        data:new Array(24).fill(maxUTR),
+        borderColor:'rgba(188,140,255,0.9)',borderWidth:2,borderDash:[5,3],
+        pointRadius:0,fill:false,tension:0,order:0,label:`Cap ${maxUTR.toFixed(1)}`});
+    }
+
+    SC['utr_'+k]=new Chart(document.getElementById('utr_'+k),{
+      data:{labels:HRL,datasets:utrDs},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{
+          if(ctx.dataset.label==='Baseline 1.4') return'City baseline: 1.4';
+          if(ctx.dataset.label==='Without stacking') return`No-stk UTR: ${ctx.parsed.y.toFixed(2)}`;
+          if(ctx.dataset.label&&ctx.dataset.label.startsWith('Cap')) return`Max cap: ${ctx.parsed.y.toFixed(1)}`;
+          return ctx.parsed.y===0?'No riders':`UTR: ${ctx.parsed.y.toFixed(2)}${stkOn?' (stk adj)':''}`;
+        }},bodyColor:'#e6edf3',backgroundColor:'#1c2330',borderColor:'#2a3441',borderWidth:1}},
+        scales:{x:{ticks:{color:'#4d5966',font:{size:8},maxRotation:0,autoSkip:true,maxTicksLimit:6},grid:{display:false}},
+                y:{display:true,min:0,ticks:{color:'#4d5966',font:{size:8},stepSize:1},grid:{color:'rgba(255,255,255,0.04)'}}}}});
+
+    const ordColors=b.dailyAvgHr.map((_,i)=>barColor(i,b.cfg.S,b.cfg.nShifts));
+    SC['ord_'+k]=new Chart(document.getElementById('ord_'+k),{
+      type:'bar',
+      data:{labels:HRL,datasets:[{
+        data:b.dailyAvgHr,
+        backgroundColor:ordColors,
+        borderWidth:0
+      }]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`~${ctx.parsed.y.toFixed(0)} orders/hr`},bodyColor:'#e6edf3',backgroundColor:'#1c2330',borderColor:'#2a3441',borderWidth:1}},
+        scales:{x:{ticks:{color:'#4d5966',font:{size:8},maxRotation:0,autoSkip:true,maxTicksLimit:6},grid:{display:false}},
+                y:{display:true,ticks:{color:'#4d5966',font:{size:8}},grid:{color:'rgba(255,255,255,0.04)'},title:{display:false}}}}});
+  });
+}
+
+function resetBranchRiders(name){
+  if(branchCfg[name]) branchCfg[name].manualRiders=null;
+  const def=branches.find(d=>d.name===name);
+  if(def){
+    const bIdx=branches.findIndex(x=>x.name===name);
+    if(bIdx>=0){
+      branches[bIdx].riders=def.riders;
+      const rc=document.getElementById('rc'+bIdx);if(rc)rc.textContent=def.riders;
+      const rs=document.getElementById('rs'+bIdx);if(rs)rs.value=def.riders;
+    }
+  }
+  render();
+}
+
+function doReset(){
+  activeBr=new Set(branches.map(b=>b.name));
+  editingBranch=null;
+  Object.keys(branchCfg).forEach(k=>delete branchCfg[k]);
+  nShifts=DEF_NSHIFTS; S=JSON.parse(JSON.stringify(DEF_S));
+  orderPct=100;stkOn=false;stkRate=25;noShowPct=0;maxUTR=0;
+
+  document.getElementById('utr-cap-slider').value=0;
+  document.getElementById('utr-cap-val').textContent='No cap';
+  document.getElementById('utr-cap-badge').textContent='UTR cap off';
+  document.getElementById('utr-cap-badge').classList.remove('on');
+  document.getElementById('utr-cap-slider').style.background='';
+
+  document.getElementById('ord-slider').value=100;
+  document.getElementById('ord-val').textContent='100%';
+  document.getElementById('ord-hint').textContent='100%';
+  document.getElementById('ord-badge').textContent='100% orders';
+  document.getElementById('ord-slider').style.background='linear-gradient(to right,var(--eve) 0%,var(--eve) 100%)';
+
+  document.getElementById('stk-toggle').checked=false;
+  document.getElementById('stk-rate').value=25;
+  document.getElementById('stk-val').textContent='25%';
+  document.getElementById('stk-rate-row').style.opacity='0.4';
+  document.getElementById('stk-rate-row').style.pointerEvents='none';
+  document.getElementById('stk-badge').classList.remove('on');
+
+  document.getElementById('ns-slider').value=0;
+  document.getElementById('ns-val').textContent='0%';
+  document.getElementById('ns-badge').textContent='0% absent';
+  document.getElementById('ns-badge').classList.remove('on');
+  document.getElementById('ns-breakdown').style.display='none';
+  document.getElementById('ns-slider').style.background='';
+
+  updateSidebarLabel(null);
+  document.getElementById('s1s').value=9; document.getElementById('s1e').value=19;
+  document.getElementById('s2s').value=14;document.getElementById('s2e').value=24;
+  document.getElementById('s3s').value=20;document.getElementById('s3e').value=30;
+
+  Object.keys(distFilter).forEach(k=>delete distFilter[k]);
+
+  setNShifts(2);buildChips();buildSliders();buildDistSliders();render();
+}
+</script>
+</body>
+</html>

@@ -13,32 +13,39 @@
 -- against dim_logistics_rider's current-day snapshot, so a rider who was
 -- Hybrid on the order date but has since changed contract still counts.
 --
--- Notes:
+-- Demand vs. supply: orders_count/successful_orders are NOT restricted to
+-- orders a Hybrid rider actually delivered. For staffing, what matters is
+-- how many orders a Hybrid rider COULD have taken, i.e. orders that are
+-- (a) not tagged is_large_order, and (b) within that branch's Hybrid
+-- dropoff-distance cap (distance_cap_lookup below). Counting only orders
+-- Hybrid riders happened to deliver would make demand self-limit to
+-- whatever headcount already existed, masking understaffing. active_riders
+-- (supply) is still scoped to Hybrid riders only, via the CTEs above.
+--
+-- distance_cap_lookup is a hardcoded VALUES table (QA branch caps as of
+-- 2026-09-12, from ops config), NOT a join to
+-- tlb-data-dev.data_platform_logistics.hybrid_fleet_distance_cap_2 --
+-- that dataset is inaccessible to the account this dashboard's Apps Script
+-- runs BigQuery as (Access Denied, confirmed live). If a branch isn't in
+-- the lookup, it's treated as UNCAPPED (included without distance
+-- filtering) rather than dropped, so a new/renamed branch doesn't silently
+-- disappear from the dashboard -- check branch_name spelling if a known
+-- branch's orders look uncapped when it shouldn't be.
+--
+-- Other notes:
 -- 1) fct_logistics_rider_shift has no vendor_code (only sp_id/zone_id), so
 --    a rider's branch for the day is inferred from wherever they had the
 --    most completed orders that day (rider_primary_branch CTE).
 -- 2) Shifts crossing midnight are clipped to hours on their start date
 --    (see rider_shift_hours CTE).
--- 3) The final query is still driven FROM fct_logistics_order, so an
---    hour with riders on shift but zero orders won't appear as a row.
---
--- Demand vs. supply: orders_count/successful_orders in the final SELECT are
--- NOT restricted to orders a Hybrid rider actually delivered. For staffing,
--- what matters is how many orders a Hybrid rider COULD have taken -- i.e.
--- every darkstore order except ones tagged is_large_order (Hybrid riders
--- can't carry large orders). Counting only orders Hybrid riders happened to
--- deliver would make demand self-limit to whatever headcount already
--- existed that hour, masking understaffing. active_riders (supply) is still
--- scoped to Hybrid riders only, via the CTEs above.
---
--- Reverted (commit after 7685501): that version also gated demand by
--- dedicated_vendor_list (hybrid_fleet_store) and a Hybrid dropoff-distance
--- cap (hybrid_fleet_distance_cap_2), matching hybrid_fleet_qa_order_share_mom.sql.
--- Both tables live in tlb-data-dev.data_platform_logistics, and the
--- account this dashboard's Apps Script runs BigQuery as got Access Denied
--- on them. Once that account has read access to that dataset, restore the
--- distance-cap version from git history (commit 7685501) instead of this
--- large-order-only fallback.
+-- 3) The final query is still driven FROM hybrid_eligible_orders, so an
+--    hour with riders on shift but zero eligible orders won't appear as a
+--    row.
+-- 4) dim_logistics_vendor has duplicate rows per (country_code, city_id,
+--    vendor_code) that differ only in location_id (one NULL, one
+--    populated) -- harmless here since every aggregate below is either
+--    COUNT(DISTINCT ...) or AVG (uniform 2x duplication doesn't change
+--    either), but worth knowing before adding a SUM() or COUNT(*).
 
 WITH order_days AS (
   SELECT
@@ -106,38 +113,71 @@ scheduled_riders AS (
   SELECT order_date, hour, branch_name, COUNT(DISTINCT rider_id) AS active_riders
   FROM rider_shift_hours
   GROUP BY 1, 2, 3
+),
+
+-- Hybrid Fleet dropoff-distance caps (km) per branch, per ops config
+-- (hardcoded -- see header comment for why).
+distance_cap_lookup AS (
+  SELECT * FROM UNNEST([
+    STRUCT('Talabat Mart , Old Al Rayyan' AS branch_name, 5.0 AS max_do_distance_km),
+    STRUCT('talabat mart, Abu Hamour', 6.0),
+    STRUCT('Talabat Mart, Al Khor', 11.0),
+    STRUCT('talabat mart, Al manaseer', 3.5),
+    STRUCT('talabat mart, Al Thumama', 5.0),
+    STRUCT('talabat mart, Al Wakrah', 4.0),
+    STRUCT('talabat mart, Bin Omran', 5.0),
+    STRUCT('talabat mart, Lusail', 5.0),
+    STRUCT('talabat mart,  Muntazh (new location)', 3.5),
+    STRUCT('talabat mart, Umm Salal Ali', 5.0),
+    STRUCT('talabat mart, Umm Salal Mohammed', 5.0)
+  ])
+),
+
+hybrid_eligible_orders AS (
+  SELECT
+    o.order_code,
+    o.created_date,
+    oi.order_time,
+    o.primary_dropoff_distance_manhattan,
+    o.primary_stacked_count,
+    o.order_status,
+    v.vendor_name AS branch_name
+  FROM `tlb-data-prod.data_platform.fct_logistics_order` AS o
+  INNER JOIN `tlb-data-prod.data_platform.fct_order_info` AS oi
+    ON o.order_id = oi.order_id
+    AND oi.order_date BETWEEN PARSE_DATE('%Y-%m-%d', @date_from) AND PARSE_DATE('%Y-%m-%d', @date_to)
+  LEFT JOIN `tlb-data-prod.data_platform.dim_logistics_vendor` AS v
+    ON o.country_code = v.country_code
+    AND o.city_id = v.city_id
+    AND o.vendor_code = v.vendor_code
+  LEFT JOIN distance_cap_lookup AS dc
+    ON LOWER(TRIM(v.vendor_name)) = LOWER(TRIM(dc.branch_name))
+  WHERE o.country_code IN (@country_code, LOWER(@country_code), UPPER(@country_code))
+    AND o.is_rider_order = TRUE
+    AND o.is_talabat = TRUE
+    AND o.order_status IN ('completed', 'Completed', 'COMPLETED')
+    AND oi.is_darkstore = TRUE
+    AND o.created_date BETWEEN PARSE_DATE('%Y-%m-%d', @date_from) AND PARSE_DATE('%Y-%m-%d', @date_to)
+    AND NOT COALESCE(o.is_large_order, FALSE)
+    AND (dc.max_do_distance_km IS NULL OR (o.primary_dropoff_distance_manhattan / 1000) <= dc.max_do_distance_km)
 )
 
 SELECT
-  o.created_date as order_date,
-  EXTRACT(HOUR FROM oi.order_time) as hour,
-  v.vendor_name as branch_name,
-  COUNT(DISTINCT o.order_code) as orders_count,
-  COUNT(DISTINCT CASE WHEN o.order_status IN ('completed', 'Completed', 'COMPLETED') THEN o.order_code END) as successful_orders,
-  AVG(o.primary_dropoff_distance_manhattan / 1000) as avg_distance_km,
+  heo.created_date as order_date,
+  EXTRACT(HOUR FROM heo.order_time) as hour,
+  heo.branch_name,
+  COUNT(DISTINCT heo.order_code) as orders_count,
+  COUNT(DISTINCT CASE WHEN heo.order_status IN ('completed', 'Completed', 'COMPLETED') THEN heo.order_code END) as successful_orders,
+  AVG(heo.primary_dropoff_distance_manhattan / 1000) as avg_distance_km,
   SAFE_DIVIDE(
-    COUNT(DISTINCT CASE WHEN o.primary_stacked_count > 0 THEN o.order_code END),
-    COUNT(DISTINCT o.order_code)
+    COUNT(DISTINCT CASE WHEN heo.primary_stacked_count > 0 THEN heo.order_code END),
+    COUNT(DISTINCT heo.order_code)
   ) as stacking_rate,
   ANY_VALUE(sr.active_riders) as active_riders
-FROM `tlb-data-prod.data_platform.fct_logistics_order` as o
-INNER JOIN `tlb-data-prod.data_platform.fct_order_info` as oi
-  ON o.order_id = oi.order_id
-  AND oi.order_date BETWEEN PARSE_DATE('%Y-%m-%d', @date_from) AND PARSE_DATE('%Y-%m-%d', @date_to)
-LEFT JOIN `tlb-data-prod.data_platform.dim_logistics_vendor` as v
-  ON o.country_code = v.country_code
-  AND o.city_id = v.city_id
-  AND o.vendor_code = v.vendor_code
+FROM hybrid_eligible_orders AS heo
 LEFT JOIN scheduled_riders sr
-  ON sr.order_date = o.created_date
-  AND sr.hour = EXTRACT(HOUR FROM oi.order_time)
-  AND sr.branch_name = v.vendor_name
-WHERE o.country_code IN (@country_code, LOWER(@country_code), UPPER(@country_code))
-  AND o.is_rider_order = TRUE
-  AND o.is_talabat = TRUE
-  AND o.order_status IN ('completed', 'Completed', 'COMPLETED')
-  AND oi.is_darkstore = TRUE
-  AND o.created_date BETWEEN PARSE_DATE('%Y-%m-%d', @date_from) AND PARSE_DATE('%Y-%m-%d', @date_to)
-  AND NOT COALESCE(o.is_large_order, FALSE)
+  ON sr.order_date = heo.created_date
+  AND sr.hour = EXTRACT(HOUR FROM heo.order_time)
+  AND sr.branch_name = heo.branch_name
 GROUP BY order_date, hour, branch_name
 ORDER BY branch_name, hour
