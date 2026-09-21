@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    .viz-root {
+      color-scheme: light;
+      --surface-1:      #fcfcfb;
+      --page-plane:     #f9f9f7;
+      --text-primary:   #0b0b0b;
+      --text-secondary: #52514e;
+      --text-muted:     #898781;
+      --gridline:       #e1e0d9;
+      --baseline:       #c3c2b7;
+      --border:         rgba(11,11,11,0.10);
+      --series-1:       #2a78d6; /* blue */
+      --status-good:      #0ca30c;
+      --status-warning:   #fab219;
+      --status-critical:  #d03b3b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:where(:not([data-theme="light"])) .viz-root {
+        color-scheme: dark;
+        --surface-1:      #1a1a19;
+        --page-plane:     #0d0d0d;
+        --text-primary:   #ffffff;
+        --text-secondary: #c3c2b7;
+        --text-muted:     #898781;
+        --gridline:       #2c2c2a;
+        --baseline:       #383835;
+        --border:         rgba(255,255,255,0.10);
+        --series-1:       #3987e5;
+        --status-good:      #0ca30c;
+        --status-warning:   #fab219;
+        --status-critical:  #e66767;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--page-plane);
+      color: var(--text-primary);
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+
+    .topbar {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .topbar h1 { font-size: 20px; margin: 0; }
+    .topbar .meta { color: var(--text-secondary); font-size: 13px; }
+    .refresh-btn {
+      border: 1px solid var(--border);
+      background: var(--surface-1);
+      color: var(--text-primary);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .refresh-btn:hover { background: var(--gridline); }
+    .refresh-btn:disabled { opacity: 0.6; cursor: default; }
+
+    .card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+    .card h2 { font-size: 16px; margin: 0 0 14px; }
+
+    .error-banner {
+      background: color-mix(in srgb, var(--status-critical) 12%, var(--surface-1));
+      border: 1px solid var(--status-critical);
+      color: var(--text-primary);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .kpi-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+    .kpi-tile {
+      flex: 1 1 180px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .kpi-tile .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+    .kpi-tile .value {
+      font-size: 26px;
+      font-weight: 600;
+      font-variant-numeric: normal;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .kpi-tile .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none;
+    }
+    .status-good { background: var(--status-good); }
+    .status-warning { background: var(--status-warning); }
+    .status-critical { background: var(--status-critical); }
+    .status-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .chart-box .chart-title {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .chart-box canvas { max-height: 220px; }
+
+    .table-toggle {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 12px;
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 0;
+      margin-top: 14px;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    table.data-table th, table.data-table td {
+      text-align: left;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--gridline);
+      color: var(--text-primary);
+    }
+    table.data-table th { color: var(--text-secondary); font-weight: 500; }
+    .hidden { display: none; }
+    .empty-state { color: var(--text-muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="viz-root">
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <h1>Tmart Hybrid Performance — Live Dashboard</h1>
+          <div class="meta" id="lastUpdated">Loading…</div>
+        </div>
+        <button class="refresh-btn" id="refreshBtn">Refresh now</button>
+      </div>
+
+      <div id="sections"></div>
+    </div>
+  </div>
+
+  <script>
+    var SECTION_ORDER = ['orderSummary', 'riderUtr', 'rtvViolation'];
+    var AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
+    var charts = {}; // key: canvasId -> Chart instance
+
+    function fmtNumber(n) {
+      if (n === undefined || n === null || isNaN(n)) return '—';
+      return Math.abs(n) >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 1 })
+                                  : (Math.round(n * 100) / 100).toString();
+    }
+
+    function statusLabel(status) {
+      if (status === 'critical') return 'Off target';
+      if (status === 'warning') return 'Watch';
+      if (status === 'good') return 'On target';
+      return '';
+    }
+
+    function renderKpiTile(col, kpi) {
+      var dot = kpi.status ? '<span class="status-dot status-' + kpi.status + '"></span>' : '';
+      var statusText = kpi.status ? '<div class="status-label">' + statusLabel(kpi.status) + '</div>' : '';
+      return (
+        '<div class="kpi-tile">' +
+          '<div class="label">' + col + ' (latest)</div>' +
+          '<div class="value">' + dot + fmtNumber(kpi.latest) + '</div>' +
+          statusText +
+          '<div class="sub">avg ' + fmtNumber(kpi.average) + ' · total ' + fmtNumber(kpi.total) + '</div>' +
+        '</div>'
+      );
+    }
+
+    function renderSection(key, section) {
+      var card = document.createElement('div');
+      card.className = 'card';
+
+      var html = '<h2>' + section.title + '</h2>';
+
+      if (section.error) {
+        html += '<div class="error-banner">Could not load this section: ' + section.error +
+                '<br>Check CONFIG.sections.' + key + ' in Code.gs (sheet name / range / column names).</div>';
+        card.innerHTML = html;
+        return card;
+      }
+
+      if (!section.valueCols.length || !section.rows.length) {
+        html += '<div class="empty-state">No data found for this range yet.</div>';
+        card.innerHTML = html;
+        return card;
+      }
+
+      html += '<div class="kpi-row">';
+      section.valueCols.forEach(function (col) {
+        var kpi = section.kpis[col];
+        if (kpi) html += renderKpiTile(col, kpi);
+      });
+      html += '</div>';
+
+      html += '<div class="chart-grid">';
+      section.valueCols.forEach(function (col) {
+        var canvasId = 'chart-' + key + '-' + col.replace(/[^a-z0-9]+/gi, '_');
+        html += (
+          '<div class="chart-box">' +
+            '<div class="chart-title">' + col + '</div>' +
+            '<canvas id="' + canvasId + '"></canvas>' +
+          '</div>'
+        );
+      });
+      html += '</div>';
+
+      html += '<button class="table-toggle" data-target="table-' + key + '">Show data table</button>';
+      html += '<div id="table-' + key + '" class="hidden">' + renderTable(section) + '</div>';
+
+      card.innerHTML = html;
+
+      card.querySelector('.table-toggle').addEventListener('click', function (e) {
+        var target = document.getElementById(e.target.getAttribute('data-target'));
+        var collapsed = target.classList.contains('hidden');
+        target.classList.toggle('hidden');
+        e.target.textContent = collapsed ? 'Hide data table' : 'Show data table';
+      });
+
+      section.valueCols.forEach(function (col) {
+        var canvasId = 'chart-' + key + '-' + col.replace(/[^a-z0-9]+/gi, '_');
+        drawLineChart(card.querySelector('#' + canvasId), section, col);
+      });
+
+      return card;
+    }
+
+    function renderTable(section) {
+      var cols = [section.dateCol].concat(section.valueCols);
+      var head = '<tr>' + cols.map(function (c) { return '<th>' + c + '</th>'; }).join('') + '</tr>';
+      var body = section.rows.map(function (r) {
+        return '<tr>' + cols.map(function (c) { return '<td>' + (r[c] === undefined ? '' : r[c]) + '</td>'; }).join('') + '</tr>';
+      }).join('');
+      return '<table class="data-table">' + head + body + '</table>';
+    }
+
+    function drawLineChart(canvas, section, col) {
+      if (!canvas) return;
+      var existing = charts[canvas.id];
+      if (existing) existing.destroy();
+
+      var labels = section.rows.map(function (r) { return r[section.dateCol]; });
+      var data = section.rows.map(function (r) { return Number(r[col]); });
+      var seriesColor = getComputedStyle(document.querySelector('.viz-root')).getPropertyValue('--series-1').trim();
+      var gridColor = getComputedStyle(document.querySelector('.viz-root')).getPropertyValue('--gridline').trim();
+      var mutedColor = getComputedStyle(document.querySelector('.viz-root')).getPropertyValue('--text-muted').trim();
+
+      charts[canvas.id] = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            borderColor: seriesColor,
+            backgroundColor: seriesColor,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            tension: 0.15,
+            fill: false,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: gridColor }, ticks: { color: mutedColor, maxRotation: 0, autoSkip: true } },
+            y: { grid: { color: gridColor }, ticks: { color: mutedColor }, beginAtZero: true },
+          },
+        },
+      });
+    }
+
+    function render(data) {
+      var lastUpdated = document.getElementById('lastUpdated');
+      lastUpdated.textContent = 'Last updated ' + new Date(data.generatedAt).toLocaleString();
+
+      var container = document.getElementById('sections');
+      container.innerHTML = '';
+      SECTION_ORDER.forEach(function (key) {
+        var section = data.sections[key];
+        if (section) container.appendChild(renderSection(key, section));
+      });
+    }
+
+    function showLoadError(err) {
+      document.getElementById('lastUpdated').textContent = 'Failed to load: ' + (err && err.message ? err.message : err);
+    }
+
+    function refresh(forceBypassCache) {
+      var btn = document.getElementById('refreshBtn');
+      btn.disabled = true;
+      btn.textContent = 'Refreshing…';
+      var fn = forceBypassCache ? google.script.run.forceRefreshDashboardData : google.script.run.getDashboardData;
+      fn.withSuccessHandler(function (data) {
+        render(data);
+        btn.disabled = false;
+        btn.textContent = 'Refresh now';
+      }).withFailureHandler(function (err) {
+        showLoadError(err);
+        btn.disabled = false;
+        btn.textContent = 'Refresh now';
+      })();
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', function () { refresh(true); });
+
+    refresh(false);
+    setInterval(function () { refresh(false); }, AUTO_REFRESH_MS);
+  </script>
+</body>
+</html>
