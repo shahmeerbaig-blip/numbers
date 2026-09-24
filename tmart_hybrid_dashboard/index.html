@@ -88,63 +88,54 @@
       margin-bottom: 10px;
     }
 
-    .kpi-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
-    .kpi-tile {
-      flex: 1 1 180px;
+    .series-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .series-box {
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 12px 14px;
     }
-    .kpi-tile .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
-    .kpi-tile .value {
-      font-size: 26px;
+    .series-box .name { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+    .series-box .value {
+      font-size: 24px;
       font-weight: 600;
-      font-variant-numeric: normal;
       display: flex;
       align-items: center;
       gap: 8px;
+      margin-bottom: 2px;
     }
-    .kpi-tile .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-    .status-dot {
-      width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none;
-    }
+    .series-box .sub { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
     .status-good { background: var(--status-good); }
     .status-warning { background: var(--status-warning); }
     .status-critical { background: var(--status-critical); }
-    .status-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
+    .status-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; margin-left: -4px; }
 
-    .chart-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 16px;
-    }
-    .chart-box .chart-title {
-      font-size: 12px;
-      color: var(--text-secondary);
-      margin-bottom: 6px;
-    }
-    .chart-box canvas { max-height: 220px; }
+    .series-box canvas { max-height: 160px; }
 
     .table-toggle {
       background: none;
       border: none;
       color: var(--text-secondary);
-      font-size: 12px;
+      font-size: 11px;
       text-decoration: underline;
       cursor: pointer;
       padding: 0;
-      margin-top: 14px;
+      margin-top: 10px;
     }
     table.data-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
+      margin-top: 8px;
       font-size: 12px;
       font-variant-numeric: tabular-nums;
     }
     table.data-table th, table.data-table td {
       text-align: left;
-      padding: 6px 8px;
+      padding: 4px 6px;
       border-bottom: 1px solid var(--gridline);
       color: var(--text-primary);
     }
@@ -171,7 +162,8 @@
   <script>
     var SECTION_ORDER = ['orderSummary', 'riderUtr', 'rtvViolation'];
     var AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
-    var charts = {}; // key: canvasId -> Chart instance
+    var charts = {}; // canvasId -> Chart instance
+    var uid = 0;
 
     function fmtNumber(n) {
       if (n === undefined || n === null || isNaN(n)) return '—';
@@ -186,110 +178,103 @@
       return '';
     }
 
-    function renderKpiTile(col, kpi) {
-      var dot = kpi.status ? '<span class="status-dot status-' + kpi.status + '"></span>' : '';
-      var statusText = kpi.status ? '<div class="status-label">' + statusLabel(kpi.status) + '</div>' : '';
-      return (
-        '<div class="kpi-tile">' +
-          '<div class="label">' + col + ' (latest)</div>' +
-          '<div class="value">' + dot + fmtNumber(kpi.latest) + '</div>' +
-          statusText +
-          '<div class="sub">avg ' + fmtNumber(kpi.average) + ' · total ' + fmtNumber(kpi.total) + '</div>' +
+    function renderSeriesBox(key, s) {
+      uid++;
+      var boxId = 'box-' + uid;
+      var canvasId = 'chart-' + uid;
+      var tableId = 'table-' + uid;
+
+      var kpi = s.kpi;
+      var dot = kpi && kpi.status ? '<span class="status-dot status-' + kpi.status + '"></span>' : '';
+      var statusText = kpi && kpi.status ? '<span class="status-label">' + statusLabel(kpi.status) + '</span>' : '';
+
+      var html = (
+        '<div class="series-box" id="' + boxId + '">' +
+          '<div class="name">' + s.name + '</div>' +
+          '<div class="value">' + dot + (kpi ? fmtNumber(kpi.latest) : '—') + statusText + '</div>' +
+          '<div class="sub">' + (kpi ? 'avg ' + fmtNumber(kpi.average) + ' · total ' + fmtNumber(kpi.total) : 'no data') + '</div>' +
+          '<canvas id="' + canvasId + '"></canvas>' +
+          '<button class="table-toggle" data-target="' + tableId + '">Show data</button>' +
+          '<div id="' + tableId + '" class="hidden">' + renderSeriesTable(s) + '</div>' +
         '</div>'
       );
+
+      var wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      var node = wrapper.firstChild;
+
+      node.querySelector('.table-toggle').addEventListener('click', function (e) {
+        var target = document.getElementById(e.target.getAttribute('data-target'));
+        var collapsed = target.classList.contains('hidden');
+        target.classList.toggle('hidden');
+        e.target.textContent = collapsed ? 'Hide data' : 'Show data';
+      });
+
+      drawLineChart(node.querySelector('#' + canvasId), s);
+      return node;
+    }
+
+    function renderSeriesTable(s) {
+      var head = '<tr><th>Date</th><th>Value</th></tr>';
+      var body = s.dateLabels.map(function (d, i) {
+        return '<tr><td>' + d + '</td><td>' + fmtNumber(s.values[i]) + '</td></tr>';
+      }).join('');
+      return '<table class="data-table">' + head + body + '</table>';
     }
 
     function renderSection(key, section) {
       var card = document.createElement('div');
       card.className = 'card';
-
       var html = '<h2>' + section.title + '</h2>';
 
       if (section.error) {
         html += '<div class="error-banner">Could not load this section: ' + section.error +
-                '<br>Check CONFIG.sections.' + key + ' in Code.gs (sheet name / range / column names).</div>';
+                '<br>Check CONFIG.sheets.' + key + ' in Code.gs (sheet name / pivot anchors).</div>';
         card.innerHTML = html;
         return card;
       }
 
-      if (!section.valueCols.length || !section.rows.length) {
-        html += '<div class="empty-state">No data found for this range yet.</div>';
+      if (!section.series.length) {
+        html += '<div class="empty-state">No data found yet.</div>';
         card.innerHTML = html;
         return card;
       }
-
-      html += '<div class="kpi-row">';
-      section.valueCols.forEach(function (col) {
-        var kpi = section.kpis[col];
-        if (kpi) html += renderKpiTile(col, kpi);
-      });
-      html += '</div>';
-
-      html += '<div class="chart-grid">';
-      section.valueCols.forEach(function (col) {
-        var canvasId = 'chart-' + key + '-' + col.replace(/[^a-z0-9]+/gi, '_');
-        html += (
-          '<div class="chart-box">' +
-            '<div class="chart-title">' + col + '</div>' +
-            '<canvas id="' + canvasId + '"></canvas>' +
-          '</div>'
-        );
-      });
-      html += '</div>';
-
-      html += '<button class="table-toggle" data-target="table-' + key + '">Show data table</button>';
-      html += '<div id="table-' + key + '" class="hidden">' + renderTable(section) + '</div>';
 
       card.innerHTML = html;
-
-      card.querySelector('.table-toggle').addEventListener('click', function (e) {
-        var target = document.getElementById(e.target.getAttribute('data-target'));
-        var collapsed = target.classList.contains('hidden');
-        target.classList.toggle('hidden');
-        e.target.textContent = collapsed ? 'Hide data table' : 'Show data table';
+      var grid = document.createElement('div');
+      grid.className = 'series-grid';
+      section.series.forEach(function (s) {
+        s.kpi = section.kpis[s.name];
+        grid.appendChild(renderSeriesBox(key, s));
       });
-
-      section.valueCols.forEach(function (col) {
-        var canvasId = 'chart-' + key + '-' + col.replace(/[^a-z0-9]+/gi, '_');
-        drawLineChart(card.querySelector('#' + canvasId), section, col);
-      });
-
+      card.appendChild(grid);
       return card;
     }
 
-    function renderTable(section) {
-      var cols = [section.dateCol].concat(section.valueCols);
-      var head = '<tr>' + cols.map(function (c) { return '<th>' + c + '</th>'; }).join('') + '</tr>';
-      var body = section.rows.map(function (r) {
-        return '<tr>' + cols.map(function (c) { return '<td>' + (r[c] === undefined ? '' : r[c]) + '</td>'; }).join('') + '</tr>';
-      }).join('');
-      return '<table class="data-table">' + head + body + '</table>';
-    }
-
-    function drawLineChart(canvas, section, col) {
+    function drawLineChart(canvas, s) {
       if (!canvas) return;
       var existing = charts[canvas.id];
       if (existing) existing.destroy();
 
-      var labels = section.rows.map(function (r) { return r[section.dateCol]; });
-      var data = section.rows.map(function (r) { return Number(r[col]); });
-      var seriesColor = getComputedStyle(document.querySelector('.viz-root')).getPropertyValue('--series-1').trim();
-      var gridColor = getComputedStyle(document.querySelector('.viz-root')).getPropertyValue('--gridline').trim();
-      var mutedColor = getComputedStyle(document.querySelector('.viz-root')).getPropertyValue('--text-muted').trim();
+      var root = document.querySelector('.viz-root');
+      var seriesColor = getComputedStyle(root).getPropertyValue('--series-1').trim();
+      var gridColor = getComputedStyle(root).getPropertyValue('--gridline').trim();
+      var mutedColor = getComputedStyle(root).getPropertyValue('--text-muted').trim();
 
       charts[canvas.id] = new Chart(canvas, {
         type: 'line',
         data: {
-          labels: labels,
+          labels: s.dateLabels,
           datasets: [{
-            data: data,
+            data: s.values,
             borderColor: seriesColor,
             backgroundColor: seriesColor,
             borderWidth: 2,
-            pointRadius: 3,
+            pointRadius: 2,
             pointHoverRadius: 5,
             tension: 0.15,
             fill: false,
+            spanGaps: true,
           }],
         },
         options: {
@@ -305,11 +290,11 @@
     }
 
     function render(data) {
-      var lastUpdated = document.getElementById('lastUpdated');
-      lastUpdated.textContent = 'Last updated ' + new Date(data.generatedAt).toLocaleString();
+      document.getElementById('lastUpdated').textContent = 'Last updated ' + new Date(data.generatedAt).toLocaleString();
 
       var container = document.getElementById('sections');
       container.innerHTML = '';
+      charts = {};
       SECTION_ORDER.forEach(function (key) {
         var section = data.sections[key];
         if (section) container.appendChild(renderSection(key, section));
