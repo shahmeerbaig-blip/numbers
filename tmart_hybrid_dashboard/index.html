@@ -69,6 +69,23 @@
     .refresh-btn:hover { background: var(--gridline); }
     .refresh-btn:disabled { opacity: 0.6; cursor: default; }
 
+    .range-selector { display: flex; gap: 6px; margin-bottom: 20px; }
+    .range-selector button {
+      border: 1px solid var(--border);
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .range-selector button:hover { background: var(--gridline); }
+    .range-selector button.active {
+      color: var(--text-primary);
+      border-color: var(--text-primary);
+      font-weight: 600;
+    }
+
     .card {
       background: var(--surface-1);
       border: 1px solid var(--border);
@@ -155,6 +172,13 @@
         <button class="refresh-btn" id="refreshBtn">Refresh now</button>
       </div>
 
+      <div class="range-selector" id="rangeSelector">
+        <button data-days="7">7D</button>
+        <button data-days="14">14D</button>
+        <button data-days="30" class="active">30D</button>
+        <button data-days="">All</button>
+      </div>
+
       <div id="sections"></div>
     </div>
   </div>
@@ -164,6 +188,7 @@
     var AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
     var charts = {}; // canvasId -> Chart instance
     var uid = 0;
+    var currentDays = 30; // keep in sync with DEFAULT_RANGE_DAYS in Code.gs
 
     function fmtNumber(n) {
       if (n === undefined || n === null || isNaN(n)) return '—';
@@ -318,10 +343,21 @@
         showLoadError(err);
         btn.disabled = false;
         btn.textContent = 'Refresh now';
-      })();
+      })(currentDays);
     }
 
     document.getElementById('refreshBtn').addEventListener('click', function () { refresh(true); });
+
+    Array.prototype.forEach.call(document.querySelectorAll('#rangeSelector button'), function (btn) {
+      btn.addEventListener('click', function () {
+        if (btn.classList.contains('active')) return;
+        Array.prototype.forEach.call(document.querySelectorAll('#rangeSelector button'), function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        var raw = btn.getAttribute('data-days');
+        currentDays = raw === '' ? null : Number(raw);
+        refresh(false);
+      });
+    });
 
     refresh(false);
     setInterval(function () { refresh(false); }, AUTO_REFRESH_MS);

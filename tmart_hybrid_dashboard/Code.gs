@@ -54,6 +54,15 @@ const CONFIG = {
   rtvExcusedStatuses: ['ON_BREAK', 'SHIFT_ENDED'],
 };
 
+// Date-range selector presets shown in the UI. `days: null` means all time.
+const DATE_RANGE_OPTIONS = [
+  { label: '7D', days: 7 },
+  { label: '14D', days: 14 },
+  { label: '30D', days: 30 },
+  { label: 'All', days: null },
+];
+const DEFAULT_RANGE_DAYS = 30;
+
 // Optional compliance thresholds, used to color a KPI tile's status dot.
 // direction: 'lowerIsBetter' means values ABOVE the threshold are bad.
 const TARGETS = {
@@ -68,17 +77,18 @@ function doGet() {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-/** Called from the client on load and on auto-refresh. */
-function getDashboardData() {
+/** Called from the client on load and on auto-refresh. `days` is a DATE_RANGE_OPTIONS.days value (or null/omitted for the default). */
+function getDashboardData(days) {
+  days = normalizeDays_(days);
   const cache = CacheService.getScriptCache();
-  const cacheKey = 'dashboardData';
+  const cacheKey = 'dashboardData_' + days;
 
   if (CONFIG.refreshCacheSeconds > 0) {
     const cached = cache.get(cacheKey);
     if (cached) return JSON.parse(cached);
   }
 
-  const data = buildDashboardData_();
+  const data = buildDashboardData_(days);
 
   if (CONFIG.refreshCacheSeconds > 0) {
     cache.put(cacheKey, JSON.stringify(data), CONFIG.refreshCacheSeconds);
@@ -87,35 +97,47 @@ function getDashboardData() {
 }
 
 /** Called from the client's "Refresh now" button — bypasses the cache. */
-function forceRefreshDashboardData() {
-  CacheService.getScriptCache().remove('dashboardData');
-  return getDashboardData();
+function forceRefreshDashboardData(days) {
+  days = normalizeDays_(days);
+  CacheService.getScriptCache().remove('dashboardData_' + days);
+  return getDashboardData(days);
 }
 
-function buildDashboardData_() {
+function normalizeDays_(days) {
+  if (days === undefined || days === null || days === '') return DEFAULT_RANGE_DAYS;
+  const n = Number(days);
+  return isNaN(n) || n <= 0 ? null : n; // null = all time
+}
+
+function buildDashboardData_(days) {
   const ss = CONFIG.spreadsheetId
     ? SpreadsheetApp.openById(CONFIG.spreadsheetId)
     : SpreadsheetApp.getActiveSpreadsheet();
 
-  const data = { generatedAt: new Date().toISOString(), sections: {} };
+  const data = {
+    generatedAt: new Date().toISOString(),
+    rangeDays: days,
+    rangeOptions: DATE_RANGE_OPTIONS,
+    sections: {},
+  };
 
   let orderSummary = null;
   try {
     orderSummary = buildOrderSummary_(ss);
-    data.sections.orderSummary = decorateSection_(orderSummary);
+    data.sections.orderSummary = decorateSection_(orderSummary, days);
   } catch (err) {
     data.sections.orderSummary = errorSection_('Daily Order Count and Summary', err);
   }
 
   try {
-    data.sections.riderUtr = decorateSection_(buildRiderUtr_(ss));
+    data.sections.riderUtr = decorateSection_(buildRiderUtr_(ss), days);
   } catch (err) {
     data.sections.riderUtr = errorSection_('Rider UTR', err);
   }
 
   try {
     const totalOrdersByDate = orderSummary ? seriesToDateMap_(findSeries_(orderSummary.series, 'Total TMart Orders')) : null;
-    data.sections.rtvViolation = decorateSection_(buildRtvViolation_(ss, totalOrdersByDate));
+    data.sections.rtvViolation = decorateSection_(buildRtvViolation_(ss, totalOrdersByDate), days);
   } catch (err) {
     data.sections.rtvViolation = errorSection_('Return to Vendor Violation', err);
   }
@@ -224,28 +246,36 @@ function buildRtvViolation_(ss, totalOrdersByDate) {
 
 /**
  * Locates a native Pivot Table by the label Google Sheets writes in its
- * corner cell (column A), then finds the real header row by scanning up to
- * 4 rows below for the first one whose column B looks like a date — this
+ * corner cell (column A), then finds the real header row by looking at up
+ * to 4 rows below for the first one whose column B looks like a date — this
  * absorbs the extra "Rider Count,order_date" auto-title row some pivots
  * have between the label and the header, without hardcoding an offset.
+ *
+ * Column A is read once per sheet and reused across anchors (via
+ * getColumnA_), and the lookahead reads column B in one batched call
+ * instead of up to 5 separate single-cell calls — each Sheets API call has
+ * fixed round-trip latency, so cutting call *count* matters as much as
+ * cutting row count.
  */
 function findPivotBlockAuto_(sheet, anchorLabel) {
   const maxCols = 80;
   const maxDataRows = 2000;
   const lastRow = sheet.getLastRow();
 
-  const colA = sheet.getRange(1, 1, lastRow, 1).getValues();
-  let anchorRow = -1;
-  for (let i = 0; i < colA.length; i++) {
-    if (String(colA[i][0]).trim() === anchorLabel) { anchorRow = i + 1; break; }
-  }
-  if (anchorRow === -1) {
+  const colA = getColumnA_(sheet);
+  const anchorIdx = colA.indexOf(anchorLabel);
+  if (anchorIdx === -1) {
     throw new Error('Pivot block "' + anchorLabel + '" not found in column A of "' + sheet.getName() + '"');
   }
+  const anchorRow = anchorIdx + 1;
 
+  const lookaheadRows = Math.min(5, lastRow - anchorRow + 1);
+  const lookaheadValues = lookaheadRows > 0
+    ? sheet.getRange(anchorRow, 2, lookaheadRows, 1).getValues()
+    : [];
   let headerRow = -1;
-  for (let r = anchorRow; r <= anchorRow + 4 && r <= lastRow; r++) {
-    if (looksLikeDate_(sheet.getRange(r, 2).getValue())) { headerRow = r; break; }
+  for (let i = 0; i < lookaheadValues.length; i++) {
+    if (looksLikeDate_(lookaheadValues[i][0])) { headerRow = anchorRow + i; break; }
   }
   if (headerRow === -1) {
     throw new Error('Could not find a date header row below "' + anchorLabel + '" (row ' + anchorRow + ')');
@@ -274,12 +304,24 @@ function findPivotBlockAuto_(sheet, anchorLabel) {
 }
 
 function findRowByFirstCell_(sheet, text) {
-  const lastRow = sheet.getLastRow();
-  const colA = sheet.getRange(1, 1, lastRow, 1).getValues();
-  for (let i = 0; i < colA.length; i++) {
-    if (String(colA[i][0]).trim() === text) return i + 1;
+  const colA = getColumnA_(sheet);
+  const idx = colA.indexOf(text);
+  if (idx === -1) throw new Error('Could not find a row starting with "' + text + '" in "' + sheet.getName() + '"');
+  return idx + 1;
+}
+
+// Reused across findPivotBlockAuto_() calls on the same sheet within one
+// execution (e.g. "SUM of order_count" + "Active Rider Count" both live on
+// "Daily Order Count and Summary") so column A is only read once per sheet.
+const _columnACache = {};
+function getColumnA_(sheet) {
+  const key = sheet.getSheetId();
+  if (!_columnACache[key]) {
+    const lastRow = sheet.getLastRow();
+    _columnACache[key] = sheet.getRange(1, 1, lastRow, 1).getValues()
+      .map(function (r) { return String(r[0]).trim(); });
   }
-  throw new Error('Could not find a row starting with "' + text + '" in "' + sheet.getName() + '"');
+  return _columnACache[key];
 }
 
 function looksLikeDate_(v) {
@@ -348,9 +390,10 @@ function seriesToDateMap_(series) {
 
 // ---- KPIs & shared shape -------------------------------------------------
 
-function decorateSection_(section) {
+function decorateSection_(section, days) {
+  const series = section.series.map(function (s) { return trimSeriesToRange_(s, days); });
   const kpis = {};
-  section.series.forEach(function (s) {
+  series.forEach(function (s) {
     const nums = s.values.filter(function (v) { return typeof v === 'number' && !isNaN(v); });
     if (!nums.length) { kpis[s.name] = null; return; }
     const latest = nums[nums.length - 1];
@@ -366,10 +409,32 @@ function decorateSection_(section) {
 
   return {
     title: section.title,
-    series: section.series,
+    series: series,
     kpis: kpis,
     error: null,
   };
+}
+
+/** Keeps only the points within the last `days` days of that series' own latest date (null = keep all). */
+function trimSeriesToRange_(series, days) {
+  if (days === null || days === undefined || !series.dateLabels.length) return series;
+
+  const parsed = series.dateLabels.map(function (d) { return new Date(d); });
+  let maxTime = -Infinity;
+  parsed.forEach(function (d) { if (!isNaN(d.getTime())) maxTime = Math.max(maxTime, d.getTime()); });
+  if (!isFinite(maxTime)) return series;
+
+  const cutoff = maxTime - (days - 1) * 86400000;
+  const dateLabels = [];
+  const values = [];
+  parsed.forEach(function (d, i) {
+    if (isNaN(d.getTime()) || d.getTime() >= cutoff) {
+      dateLabels.push(series.dateLabels[i]);
+      values.push(series.values[i]);
+    }
+  });
+
+  return { name: series.name, dateLabels: dateLabels, values: values };
 }
 
 function errorSection_(title, err) {

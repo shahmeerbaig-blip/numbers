@@ -32,6 +32,41 @@ fixed range like `A1:F60` breaks within days. Instead, `Code.gs` has
 If you rename a pivot's value field (so its corner-cell label changes) or
 add a new one, update the matching anchor string in `CONFIG` in `Code.gs`.
 
+## Date range selector
+
+A `7D / 14D / 30D / All` control sits above the sections (default `30D`,
+matching `DEFAULT_RANGE_DAYS` in `Code.gs`). It's passed as `days` into
+`getDashboardData(days)` / `forceRefreshDashboardData(days)`, and
+`decorateSection_()` trims each series to that trailing window (based on
+that series' own latest date, so mismatched pivot date ranges each trim
+correctly) before computing KPIs — so "avg / total" on the tiles reflects
+the selected range too, not just the chart.
+
+Note this doesn't shrink the underlying sheet *read* for
+`Return to Vendor Violations`, since those rows aren't sorted by date (they
+come in sorted by gap size), so a bounded read isn't possible without first
+reading everything. It does shrink the response payload and render cost.
+As that sheet grows past a comfortable read size, the next real fix would
+be on the sheet side — e.g. having the query that populates that tab only
+look back N days — rather than something Apps Script can do after the fact.
+
+## Performance
+
+Each `SpreadsheetApp` call has fixed round-trip latency on top of the data
+it moves, so call *count* matters as much as row count:
+
+- `getColumnA_()` reads column A once per sheet and is reused across every
+  `findPivotBlockAuto_()` / `findRowByFirstCell_()` call on that sheet
+  within one request (e.g. `SUM of order_count` and `Active Rider Count`
+  both live on `Daily Order Count and Summary` and now share one read).
+- The header-row lookahead (checking up to 4 rows below a pivot's anchor
+  for the first date-like cell) is one batched range read instead of up to
+  5 separate single-cell reads.
+- `Return to Vendor Violations` is still read in full each time (see the
+  date range selector note above for why) — as of this writing it's ~5,600
+  rows across 7 days (~800/day) and growing, so if load times creep back up
+  as more days accumulate, that read is where to look next.
+
 ## Known gap: "Return to Vendor Violation" has no confirmed/final status yet
 
 As of when this was built, every row in `Return to Vendor Violations` has
@@ -53,8 +88,8 @@ from there instead.
 4. **Deploy → New deployment → Web app**:
    - Execute as: **Me**
    - Who has access: whoever should see it
-5. Open the deployment URL. **Refresh now** bypasses the 60s cache; it also
-   auto-refreshes every 5 minutes.
+5. Open the deployment URL. **Refresh now** bypasses the 60s cache for the
+   currently-selected date range; it also auto-refreshes every 5 minutes.
 6. After editing the script, use **Deploy → Manage deployments → Edit →
    New version** so the live URL picks up the change.
 
