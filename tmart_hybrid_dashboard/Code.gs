@@ -178,8 +178,8 @@ function buildOrderSummary_(ss) {
 
 function buildRiderUtr_(ss) {
   const sheet = getSheet_(ss, CONFIG.sheets.riderUtr);
-  const car = findPivotBlockAuto_(sheet, 'CAR UTR');
-  const bike = findPivotBlockAuto_(sheet, 'BIKE');
+  const car = findPivotBlockAuto_(sheet, ['CAR UTR', 'CAR']);
+  const bike = findPivotBlockAuto_(sheet, ['BIKE UTR', 'BIKE']);
 
   return {
     title: 'Rider UTR',
@@ -270,10 +270,18 @@ function findPivotBlockAuto_(sheet, anchorLabel) {
   const maxDataRows = 2000;
   const lastRow = sheet.getLastRow();
 
+  // anchorLabel may be a single string or an array of acceptable variants
+  // (a pivot's corner-cell label can drift, e.g. "BIKE" vs "BIKE UTR") -
+  // the first one found in column A wins.
+  const candidates = Array.isArray(anchorLabel) ? anchorLabel : [anchorLabel];
   const colA = getColumnA_(sheet);
-  const anchorIdx = colA.indexOf(anchorLabel);
+  let anchorIdx = -1;
+  for (let k = 0; k < candidates.length; k++) {
+    anchorIdx = colA.indexOf(candidates[k]);
+    if (anchorIdx !== -1) break;
+  }
   if (anchorIdx === -1) {
-    throw new Error('Pivot block "' + anchorLabel + '" not found in column A of "' + sheet.getName() + '"');
+    throw new Error('Pivot block "' + candidates.join('" / "') + '" not found in column A of "' + sheet.getName() + '"');
   }
   const anchorRow = anchorIdx + 1; // 1-based sheet row
 
