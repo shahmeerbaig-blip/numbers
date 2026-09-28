@@ -32,6 +32,18 @@ fixed range like `A1:F60` breaks within days. Instead, `Code.gs` has
 If you rename a pivot's value field (so its corner-cell label changes) or
 add a new one, update the matching anchor string in `CONFIG` in `Code.gs`.
 
+## Why there's no chart library
+
+Charts are plain inline SVG built by hand in `index.html` (`renderSparkline`)
+— no Chart.js, no CDN, no external network call of any kind. Apps Script web
+apps run inside a Google-hosted iframe, and if that environment's network
+policy blocks or can't reach a third-party CDN, a blocking `<script src="...">`
+tag in `<head>` never resolves — which stalls every other script on the page
+behind it, including the code that would replace the "Loading…" placeholder
+with real data. That was the likely cause of the dashboard hanging on load;
+removing the dependency makes that entire failure mode impossible rather
+than working around it.
+
 ## Date range selector
 
 A `7D / 14D / 30D / All` control sits above the sections (default `30D`,
@@ -101,11 +113,13 @@ from there instead.
   `decorateSection_()` computes latest/average/total (+ optional compliance
   status) per series. Each section is wrapped in its own try/catch, so a
   broken sheet/anchor shows an error banner in that card only.
-- `index.html`: renders one KPI tile + one small trend chart per series
-  (small multiples), so mismatched date ranges between pivots (e.g. the
-  order-count pivot currently spans 22 days, the active-rider pivot spans
-  12) are never forced onto a shared axis. Each series has a collapsible
-  raw data table.
+- `index.html`: renders one KPI tile + one small inline-SVG trend chart per
+  series (small multiples), so mismatched date ranges between pivots (e.g.
+  the order-count pivot currently spans 22 days, the active-rider pivot
+  spans 12) are never forced onto a shared axis. Each series has a
+  collapsible raw data table. Dynamic text (series names, error messages,
+  table values — all ultimately sourced from sheet cells) is HTML-escaped
+  before being inserted, since it's rendered with `innerHTML`.
 - Colors follow Talabat's dataviz method: one validated blue for every line
   series, and the reserved good/warning/critical palette for the Violation
   Rate % status dot — never reused for anything else.

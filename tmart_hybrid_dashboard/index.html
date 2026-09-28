@@ -3,7 +3,6 @@
 <head>
   <base target="_top">
   <meta charset="utf-8">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     .viz-root {
       color-scheme: light;
@@ -131,7 +130,10 @@
     .status-critical { background: var(--status-critical); }
     .status-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; margin-left: -4px; }
 
-    .series-box canvas { max-height: 160px; }
+    .spark { display: block; width: 100%; height: 64px; }
+    .spark-line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .spark-dot { fill: var(--series-1); }
+    .spark-empty { color: var(--text-muted); font-size: 11px; padding: 10px 0; }
 
     .table-toggle {
       background: none;
@@ -186,7 +188,6 @@
   <script>
     var SECTION_ORDER = ['orderSummary', 'riderUtr', 'rtvViolation'];
     var AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
-    var charts = {}; // canvasId -> Chart instance
     var uid = 0;
     var currentDays = 30; // keep in sync with DEFAULT_RANGE_DAYS in Code.gs
 
@@ -194,6 +195,12 @@
       if (n === undefined || n === null || isNaN(n)) return '—';
       return Math.abs(n) >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 1 })
                                   : (Math.round(n * 100) / 100).toString();
+    }
+
+    function escapeHtml(s) {
+      return String(s === undefined || s === null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function statusLabel(status) {
@@ -206,7 +213,6 @@
     function renderSeriesBox(key, s) {
       uid++;
       var boxId = 'box-' + uid;
-      var canvasId = 'chart-' + uid;
       var tableId = 'table-' + uid;
 
       var kpi = s.kpi;
@@ -215,10 +221,10 @@
 
       var html = (
         '<div class="series-box" id="' + boxId + '">' +
-          '<div class="name">' + s.name + '</div>' +
+          '<div class="name">' + escapeHtml(s.name) + '</div>' +
           '<div class="value">' + dot + (kpi ? fmtNumber(kpi.latest) : '—') + statusText + '</div>' +
           '<div class="sub">' + (kpi ? 'avg ' + fmtNumber(kpi.average) + ' · total ' + fmtNumber(kpi.total) : 'no data') + '</div>' +
-          '<canvas id="' + canvasId + '"></canvas>' +
+          renderSparkline(s) +
           '<button class="table-toggle" data-target="' + tableId + '">Show data</button>' +
           '<div id="' + tableId + '" class="hidden">' + renderSeriesTable(s) + '</div>' +
         '</div>'
@@ -235,26 +241,66 @@
         e.target.textContent = collapsed ? 'Hide data' : 'Show data';
       });
 
-      drawLineChart(node.querySelector('#' + canvasId), s);
       return node;
     }
 
     function renderSeriesTable(s) {
       var head = '<tr><th>Date</th><th>Value</th></tr>';
       var body = s.dateLabels.map(function (d, i) {
-        return '<tr><td>' + d + '</td><td>' + fmtNumber(s.values[i]) + '</td></tr>';
+        return '<tr><td>' + escapeHtml(d) + '</td><td>' + fmtNumber(s.values[i]) + '</td></tr>';
       }).join('');
       return '<table class="data-table">' + head + body + '</table>';
+    }
+
+    // Plain inline SVG — no chart library, no network dependency, so a
+    // blocked/unreachable CDN can never leave the dashboard stuck loading.
+    function renderSparkline(s) {
+      var width = 100, height = 40, pad = 4;
+      var nums = s.values.map(function (v) { return (typeof v === 'number' && !isNaN(v)) ? v : null; });
+      var finite = nums.filter(function (v) { return v !== null; });
+      if (!finite.length) return '<div class="spark-empty">No data in this range</div>';
+
+      var min = Math.min.apply(null, finite);
+      var max = Math.max.apply(null, finite);
+      if (min === max) { min -= 1; max += 1; }
+      var stepX = nums.length > 1 ? (width - pad * 2) / (nums.length - 1) : 0;
+      var x = function (i) { return pad + i * stepX; };
+      var y = function (v) { return height - pad - ((v - min) / (max - min)) * (height - pad * 2); };
+
+      var segments = [];
+      var current = [];
+      nums.forEach(function (v, i) {
+        if (v === null) { if (current.length) { segments.push(current); current = []; } return; }
+        current.push([x(i), y(v)]);
+      });
+      if (current.length) segments.push(current);
+
+      var pathD = segments.map(function (seg) {
+        return seg.map(function (p, idx) { return (idx === 0 ? 'M' : 'L') + p[0].toFixed(2) + ',' + p[1].toFixed(2); }).join(' ');
+      }).join(' ');
+
+      var dots = nums.map(function (v, i) {
+        if (v === null) return '';
+        return '<circle cx="' + x(i).toFixed(2) + '" cy="' + y(v).toFixed(2) + '" r="1.6" class="spark-dot">' +
+          '<title>' + escapeHtml(s.dateLabels[i]) + ': ' + fmtNumber(v) + '</title></circle>';
+      }).join('');
+
+      return (
+        '<svg class="spark" viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="none" role="img" aria-label="' +
+          escapeHtml(s.name) + ' trend">' +
+          '<path class="spark-line" d="' + pathD + '"/>' + dots +
+        '</svg>'
+      );
     }
 
     function renderSection(key, section) {
       var card = document.createElement('div');
       card.className = 'card';
-      var html = '<h2>' + section.title + '</h2>';
+      var html = '<h2>' + escapeHtml(section.title) + '</h2>';
 
       if (section.error) {
-        html += '<div class="error-banner">Could not load this section: ' + section.error +
-                '<br>Check CONFIG.sheets.' + key + ' in Code.gs (sheet name / pivot anchors).</div>';
+        html += '<div class="error-banner">Could not load this section: ' + escapeHtml(section.error) +
+                '<br>Check CONFIG.sheets.' + escapeHtml(key) + ' in Code.gs (sheet name / pivot anchors).</div>';
         card.innerHTML = html;
         return card;
       }
@@ -276,50 +322,11 @@
       return card;
     }
 
-    function drawLineChart(canvas, s) {
-      if (!canvas) return;
-      var existing = charts[canvas.id];
-      if (existing) existing.destroy();
-
-      var root = document.querySelector('.viz-root');
-      var seriesColor = getComputedStyle(root).getPropertyValue('--series-1').trim();
-      var gridColor = getComputedStyle(root).getPropertyValue('--gridline').trim();
-      var mutedColor = getComputedStyle(root).getPropertyValue('--text-muted').trim();
-
-      charts[canvas.id] = new Chart(canvas, {
-        type: 'line',
-        data: {
-          labels: s.dateLabels,
-          datasets: [{
-            data: s.values,
-            borderColor: seriesColor,
-            backgroundColor: seriesColor,
-            borderWidth: 2,
-            pointRadius: 2,
-            pointHoverRadius: 5,
-            tension: 0.15,
-            fill: false,
-            spanGaps: true,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { grid: { color: gridColor }, ticks: { color: mutedColor, maxRotation: 0, autoSkip: true } },
-            y: { grid: { color: gridColor }, ticks: { color: mutedColor }, beginAtZero: true },
-          },
-        },
-      });
-    }
-
     function render(data) {
       document.getElementById('lastUpdated').textContent = 'Last updated ' + new Date(data.generatedAt).toLocaleString();
 
       var container = document.getElementById('sections');
       container.innerHTML = '';
-      charts = {};
       SECTION_ORDER.forEach(function (key) {
         var section = data.sections[key];
         if (section) container.appendChild(renderSection(key, section));
