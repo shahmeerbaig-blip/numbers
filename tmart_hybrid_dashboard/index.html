@@ -341,8 +341,13 @@
       var btn = document.getElementById('refreshBtn');
       btn.disabled = true;
       btn.textContent = 'Refreshing…';
-      var fn = forceBypassCache ? google.script.run.forceRefreshDashboardData : google.script.run.getDashboardData;
-      fn.withSuccessHandler(function (data) {
+
+      // withSuccessHandler/withFailureHandler must be chained on
+      // google.script.run itself before picking the method name — chaining
+      // them on the method reference (e.g. google.script.run.getDashboardData
+      // .withSuccessHandler(...)) throws "withSuccessHandler is not a
+      // function", since that reference doesn't carry those methods.
+      var runner = google.script.run.withSuccessHandler(function (data) {
         render(data);
         btn.disabled = false;
         btn.textContent = 'Refresh now';
@@ -350,7 +355,13 @@
         showLoadError(err);
         btn.disabled = false;
         btn.textContent = 'Refresh now';
-      })(currentDays);
+      });
+
+      if (forceBypassCache) {
+        runner.forceRefreshDashboardData(currentDays);
+      } else {
+        runner.getDashboardData(currentDays);
+      }
     }
 
     document.getElementById('refreshBtn').addEventListener('click', function () { refresh(true); });
