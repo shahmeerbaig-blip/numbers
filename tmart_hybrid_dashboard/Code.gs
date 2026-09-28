@@ -35,8 +35,11 @@
  */
 
 const CONFIG = {
-  // Leave '' to read from the spreadsheet this script is bound to.
-  spreadsheetId: '',
+  // Must be an explicit ID, not ''. SpreadsheetApp.getActiveSpreadsheet()
+  // only works when a script runs inside an open Sheets UI session (a menu
+  // item, sidebar, etc.) — a deployed web app has no such session, so that
+  // call returns null here even though the script is bound to this sheet.
+  spreadsheetId: '194UkI3Upft_ArO1qmAt6ItZQ5dwtCtDpmpPb5A4gNyE',
 
   // How long a dashboard read is cached before the next open/refresh
   // re-reads the sheet. Set to 0 to always read live (no caching).
