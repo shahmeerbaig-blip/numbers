@@ -249,14 +249,19 @@ function buildRtvViolation_(ss, totalOrdersByDate) {
 
 /**
  * Locates a native Pivot Table by the label Google Sheets writes in its
- * corner cell (column A), then finds the real header row by looking at up
- * to 4 rows below for the first one whose column B looks like a date — this
- * absorbs the extra "Rider Count,order_date" auto-title row some pivots
- * have between the label and the header, without hardcoding an offset.
+ * corner cell (column A), then finds the real header row AND the column
+ * dates actually start in by scanning a small window below/right of the
+ * anchor for the first date-like cell.
+ *
+ * The header row isn't always anchorRow + 1: some pivots have an extra
+ * auto-title row ("Rider Count,order_date") in between. And the date
+ * column isn't always column B: a single-key pivot (row_label, dates...)
+ * starts dates at column B, but a multi-key pivot (e.g. rider_id + vehicle,
+ * dates...) pushes them out to column C. Scanning a small grid instead of
+ * just column B handles both without hardcoding either offset.
  *
  * Column A is read once per sheet and reused across anchors (via
- * getColumnA_), and the lookahead reads column B in one batched call
- * instead of up to 5 separate single-cell calls — each Sheets API call has
+ * getColumnA_) rather than re-scanned per call — each Sheets API call has
  * fixed round-trip latency, so cutting call *count* matters as much as
  * cutting row count.
  */
@@ -270,26 +275,35 @@ function findPivotBlockAuto_(sheet, anchorLabel) {
   if (anchorIdx === -1) {
     throw new Error('Pivot block "' + anchorLabel + '" not found in column A of "' + sheet.getName() + '"');
   }
-  const anchorRow = anchorIdx + 1;
+  const anchorRow = anchorIdx + 1; // 1-based sheet row
 
   const lookaheadRows = Math.min(5, lastRow - anchorRow + 1);
+  const lookaheadWidth = Math.min(6, maxCols - 1);
   const lookaheadValues = lookaheadRows > 0
-    ? sheet.getRange(anchorRow, 2, lookaheadRows, 1).getValues()
+    ? sheet.getRange(anchorRow, 2, lookaheadRows, lookaheadWidth).getValues()
     : [];
-  let headerRow = -1;
-  for (let i = 0; i < lookaheadValues.length; i++) {
-    if (looksLikeDate_(lookaheadValues[i][0])) { headerRow = anchorRow + i; break; }
+
+  let headerRow = -1;    // 1-based sheet row
+  let firstDateCol = -1; // 1-based sheet column
+  for (let i = 0; i < lookaheadValues.length && headerRow === -1; i++) {
+    for (let c = 0; c < lookaheadValues[i].length; c++) {
+      if (looksLikeDate_(lookaheadValues[i][c])) {
+        headerRow = anchorRow + i;
+        firstDateCol = c + 2; // lookahead range started at column 2 (B)
+        break;
+      }
+    }
   }
   if (headerRow === -1) {
     throw new Error('Could not find a date header row below "' + anchorLabel + '" (row ' + anchorRow + ')');
   }
 
-  const headerValues = sheet.getRange(headerRow, 1, 1, maxCols).getValues()[0];
-  let lastCol = 1;
-  for (let c = 1; c < headerValues.length; c++) {
-    if (headerValues[c] !== '' && headerValues[c] !== null) lastCol = c + 1;
+  const headerValues = sheet.getRange(headerRow, 1, 1, maxCols).getValues()[0]; // 0-based array
+  let lastCol = firstDateCol; // 1-based
+  for (let col = firstDateCol; col <= headerValues.length; col++) {
+    if (headerValues[col - 1] !== '' && headerValues[col - 1] !== null) lastCol = col;
   }
-  const dateLabels = headerValues.slice(1, lastCol).map(formatMaybeDate_);
+  const dateLabels = headerValues.slice(firstDateCol - 1, lastCol).map(formatMaybeDate_);
 
   const dataStartRow = headerRow + 1;
   const rowsToRead = Math.min(maxDataRows, lastRow - dataStartRow + 1);
@@ -299,7 +313,7 @@ function findPivotBlockAuto_(sheet, anchorLabel) {
     for (let i = 0; i < values.length; i++) {
       const label = String(values[i][0]).trim();
       if (!label) break; // blank row ends this pivot block
-      rows[label] = values[i].slice(1, lastCol).map(function (v) { return Number(v); });
+      rows[label] = values[i].slice(firstDateCol - 1, lastCol).map(function (v) { return Number(v); });
     }
   }
 
