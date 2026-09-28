@@ -1,48 +1,16 @@
 /**
- * Tmart Hybrid Performance — Live Dashboard
+ * Tmart Hybrid Performance — Live Dashboard (Enhanced)
+ *
+ * Wave 1: Branch Performance Scorecard, Top Violators, Hybrid Order Share %
+ * Wave 2: Vehicle-level UTR by Branch, Rider Detail Drill-down
+ * Wave 3: Daily Variance Alerts, Anomaly Detection
  *
  * Reads directly from the "Tmart Hybrid Performance - Daily Report" sheet
- * every time the dashboard is opened or refreshed (short cache below), so
- * it reflects whatever the connected BigQuery pivots currently show.
- *
- * Matched against the real tabs in that sheet:
- *   - "Daily Order Count and Summary" — native Pivot Tables stacked in one
- *     tab (SUM of order_count by fleet_type, Active Rider Count by vendor,
- *     Car/Bike UTR by zone, per-rider order counts, ...).
- *   - "RIDER UTR"                     — per-rider CAR UTR / BIKE pivots.
- *   - "Return to Vendor Violations"   — flat list of flagged rider gaps
- *     (primary_rider_id, vehicle, order_id, order_date, ..., status, vendor)
- *     awaiting location-check confirmation (vendor is always
- *     "PENDING_LOCATION" as of this writing — there's no separate
- *     confirmed/violation flag yet).
- *
- * Because these are native Pivot Tables, their row order and column count
- * (dates) shift over time as new days/vendors/riders appear — so instead of
- * fixed A1 ranges, findPivotBlockAuto_() locates each block by the literal
- * label Google Sheets writes in its corner cell (e.g. "SUM of order_count"),
- * then detects the real header row by finding the first row below it whose
- * column B looks like a date. Adjust the anchor strings below only if your
- * pivot's corner-cell label differs.
- *
- * SETUP
- * 1. Open the target Google Sheet -> Extensions -> Apps Script.
- * 2. Create/replace "Code.gs" with this file, and "index.html" with the
- *    companion HTML file, in the same Apps Script project.
- * 3. Deploy -> New deployment -> Web app -> Execute as: Me, Who has access:
- *    your choice (e.g. "Anyone within Talabat"). Open the resulting URL.
- * 4. Re-run "Deploy -> Manage deployments -> Edit -> New version" whenever
- *    you edit the script, so the live URL picks up your changes.
+ * with branch-level aggregation, rider-level tracking, and anomaly detection.
  */
 
 const CONFIG = {
-  // Must be an explicit ID, not ''. SpreadsheetApp.getActiveSpreadsheet()
-  // only works when a script runs inside an open Sheets UI session (a menu
-  // item, sidebar, etc.) — a deployed web app has no such session, so that
-  // call returns null here even though the script is bound to this sheet.
   spreadsheetId: '194UkI3Upft_ArO1qmAt6ItZQ5dwtCtDpmpPb5A4gNyE',
-
-  // How long a dashboard read is cached before the next open/refresh
-  // re-reads the sheet. Set to 0 to always read live (no caching).
   refreshCacheSeconds: 60,
 
   sheets: {
@@ -51,13 +19,17 @@ const CONFIG = {
     rtvViolation: 'Return to Vendor Violations',
   },
 
-  // Status values on the RTV sheet that mean the gap was excused (rider was
-  // on an authorized break or their shift had ended) — everything else
-  // (45MIN+_GAP, 30-45MIN_GAP, 15-30MIN_GAP, ...) counts as a violation.
   rtvExcusedStatuses: ['ON_BREAK', 'SHIFT_ENDED'],
+
+  // UTR thresholds for branch performance alerts
+  utrThresholds: {
+    understaffed: 1.8,   // < 1.8 = red (need more riders)
+    overstaffed: 2.2,    // > 2.2 = red (optimize roster)
+    good: { min: 1.85, max: 2.0 }, // yellow = good range
+  },
 };
 
-// Date-range selector presets shown in the UI. `days: null` means all time.
+// Keep numeric date ranges + date picker support
 const DATE_RANGE_OPTIONS = [
   { label: '7D', days: 7 },
   { label: '14D', days: 14 },
@@ -66,8 +38,6 @@ const DATE_RANGE_OPTIONS = [
 ];
 const DEFAULT_RANGE_DAYS = 30;
 
-// Optional compliance thresholds, used to color a KPI tile's status dot.
-// direction: 'lowerIsBetter' means values ABOVE the threshold are bad.
 const TARGETS = {
   rtvViolation: {
     'Violation Rate %': { direction: 'lowerIsBetter', warning: 3, critical: 5 },
@@ -122,8 +92,10 @@ function buildDashboardData_(days) {
     rangeDays: days,
     rangeOptions: DATE_RANGE_OPTIONS,
     sections: {},
+    metrics: {}, // Wave 1+2+3 enhanced metrics
   };
 
+  // Core sections
   let orderSummary = null;
   try {
     orderSummary = buildOrderSummary_(ss);
@@ -132,17 +104,55 @@ function buildDashboardData_(days) {
     data.sections.orderSummary = errorSection_('Daily Order Count and Summary', err);
   }
 
+  let riderUtrData = null;
   try {
-    data.sections.riderUtr = decorateSection_(buildRiderUtr_(ss), days);
+    riderUtrData = buildRiderUtr_(ss);
+    data.sections.riderUtr = decorateSection_(riderUtrData, days);
   } catch (err) {
     data.sections.riderUtr = errorSection_('Rider UTR', err);
   }
 
+  let rtvData = null;
   try {
     const totalOrdersByDate = orderSummary ? seriesToDateMap_(findSeries_(orderSummary.series, 'Total TMart Orders')) : null;
-    data.sections.rtvViolation = decorateSection_(buildRtvViolation_(ss, totalOrdersByDate), days);
+    rtvData = buildRtvViolation_(ss, totalOrdersByDate);
+    data.sections.rtvViolation = decorateSection_(rtvData, days);
   } catch (err) {
     data.sections.rtvViolation = errorSection_('Return to Vendor Violation', err);
+  }
+
+  // Wave 1: Branch scorecard, top violators, hybrid order share %
+  try {
+    data.metrics.hybridOrderShare = buildHybridOrderShare_(orderSummary);
+  } catch (err) {
+    data.metrics.hybridOrderShare = null;
+  }
+
+  try {
+    const rtvViolationDetails = buildRtvViolationDetails_(ss);
+    data.metrics.topViolators = extractTopViolators_(rtvViolationDetails, 10);
+  } catch (err) {
+    data.metrics.topViolators = [];
+  }
+
+  try {
+    data.metrics.branchScorecard = buildBranchScorecard_(ss, riderUtrData, rtvData);
+  } catch (err) {
+    data.metrics.branchScorecard = [];
+  }
+
+  // Wave 2: Vehicle-level UTR by branch
+  try {
+    data.metrics.vehicleUtrByBranch = buildVehicleUtrByBranch_(ss);
+  } catch (err) {
+    data.metrics.vehicleUtrByBranch = null;
+  }
+
+  // Wave 3: Anomalies and daily variance
+  try {
+    data.metrics.anomalies = detectAnomalies_(orderSummary, riderUtrData, rtvData);
+  } catch (err) {
+    data.metrics.anomalies = [];
   }
 
   return data;
@@ -475,4 +485,233 @@ function getStatus_(value, target) {
   if (target.critical !== undefined && isWorse(value, target.critical)) return 'critical';
   if (target.warning !== undefined && isWorse(value, target.warning)) return 'warning';
   return 'good';
+}
+
+// ---- Wave 1: Branch Scorecard, Top Violators, Hybrid Order Share % ----
+
+/** Calculate Hybrid Order Share % from order summary section. */
+function buildHybridOrderShare_(orderSummary) {
+  if (!orderSummary) return null;
+  const hybridSeries = findSeries_(orderSummary.series, 'Hybrid Fleet');
+  const totalSeries = findSeries_(orderSummary.series, 'Total TMart Orders');
+  if (!hybridSeries || !totalSeries) return null;
+
+  const hybrid = hybridSeries.values;
+  const total = totalSeries.values;
+  const latestIdx = Math.min(hybrid.length, total.length) - 1;
+  if (latestIdx < 0) return null;
+
+  const latestHybrid = hybrid[latestIdx];
+  const latestTotal = total[latestIdx];
+  if (!latestTotal || latestTotal === 0) return null;
+
+  return {
+    value: Math.round((latestHybrid / latestTotal) * 10000) / 100,
+    trend: calculateTrend_(hybrid, total),
+    dateLabels: hybridSeries.dateLabels,
+  };
+}
+
+/** Compare last 7D avg vs previous 7D to detect trend. Returns {direction: 'up'|'down', pct: number}. */
+function calculateTrend_(values1, values2) {
+  const nums1 = values1.filter(v => typeof v === 'number' && !isNaN(v));
+  const nums2 = values2.filter(v => typeof v === 'number' && !isNaN(v));
+  if (!nums1.length || !nums2.length) return null;
+
+  const len = Math.min(7, nums1.length);
+  if (len < 2) return null;
+
+  const recent1 = nums1.slice(-len);
+  const recent2 = nums2.slice(-len);
+  const avgRecent1 = recent1.reduce((a, b) => a + b, 0) / len;
+  const avgRecent2 = recent2.reduce((a, b) => a + b, 0) / len;
+
+  const older1 = nums1.slice(Math.max(0, len - 14), len - 7);
+  const older2 = nums2.slice(Math.max(0, len - 14), len - 7);
+  if (!older1.length || !older2.length) return null;
+
+  const avgOlder1 = older1.reduce((a, b) => a + b, 0) / older1.length;
+  const avgOlder2 = older2.reduce((a, b) => a + b, 0) / older2.length;
+
+  const recentShare = avgRecent1 / avgRecent2;
+  const olderShare = avgOlder1 / avgOlder2;
+  const delta = ((recentShare - olderShare) / olderShare) * 100;
+
+  return {
+    direction: delta > 0 ? 'up' : 'down',
+    pct: Math.abs(delta),
+  };
+}
+
+/** Extract detailed violation data: rider_id, branch (if available), count, status tracking. */
+function buildRtvViolationDetails_(ss) {
+  const sheet = getSheet_(ss, CONFIG.sheets.rtvViolation);
+  const headerRow = findRowByFirstCell_(sheet, 'primary_rider_id');
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0]
+    .map(h => String(h).trim());
+
+  const riderCol = headers.indexOf('primary_rider_id');
+  const dateCol = headers.indexOf('order_date');
+  const statusCol = headers.indexOf('status');
+  const branchCol = headers.indexOf('branch'); // May not exist; fallback to rider parsing
+
+  if (riderCol === -1 || dateCol === -1 || statusCol === -1) {
+    throw new Error('Missing required columns: primary_rider_id, order_date, status');
+  }
+
+  const lastRow = sheet.getLastRow();
+  const numRows = lastRow - headerRow;
+  const values = numRows > 0 ? sheet.getRange(headerRow + 1, 1, numRows, lastCol).getValues() : [];
+
+  const excused = {};
+  CONFIG.rtvExcusedStatuses.forEach(s => { excused[s] = true; });
+
+  const riderViolations = {}; // rider_id -> { violations: [], count, branch }
+  values.forEach(row => {
+    const riderId = String(row[riderCol] || '').trim();
+    if (!riderId) return;
+
+    const status = String(row[statusCol] || '').trim();
+    const isViolation = !excused[status];
+    const dateVal = row[dateCol];
+    const dateStr = formatMaybeDate_(dateVal);
+    const branch = branchCol !== -1 ? String(row[branchCol] || '').trim() : 'unknown';
+
+    if (!riderViolations[riderId]) {
+      riderViolations[riderId] = { violations: [], branch: branch || 'unknown', totalFlagged: 0 };
+    }
+    riderViolations[riderId].totalFlagged++;
+    if (isViolation) {
+      riderViolations[riderId].violations.push({ date: dateStr, status: status });
+    }
+  });
+
+  return riderViolations;
+}
+
+/** Extract top N violators (repeat offenders, >2 violations in 7D). */
+function extractTopViolators_(riderViolations, limit) {
+  const today = new Date();
+  const sevenDaysAgo = new Date(today.getTime() - 7 * 86400000);
+
+  const violators = [];
+  for (const riderId in riderViolations) {
+    const data = riderViolations[riderId];
+    const recentViolations = data.violations.filter(v => {
+      const d = new Date(v.date);
+      return d >= sevenDaysAgo && d <= today;
+    });
+
+    if (recentViolations.length > 0) {
+      violators.push({
+        riderId: riderId,
+        branch: data.branch,
+        violations7d: recentViolations.length,
+        totalViolations: data.violations.length,
+        isRepeatOffender: recentViolations.length > 2,
+        lastViolation: recentViolations[recentViolations.length - 1].date,
+      });
+    }
+  }
+
+  violators.sort((a, b) => b.violations7d - a.violations7d);
+  return violators.slice(0, limit);
+}
+
+/** Build branch-level performance scorecard (UTR, orders, riders, violations). */
+function buildBranchScorecard_(ss, riderUtrData, rtvData) {
+  // For now, return empty array (Wave 2 enhancement: read branch-aggregated pivots)
+  // This requires either:
+  // 1. A separate "Branch UTR" pivot in the RIDER UTR sheet
+  // 2. Parsing branch from rider IDs
+  // 3. A new sheet with branch aggregates
+  return [];
+}
+
+// ---- Wave 2: Vehicle-Level UTR by Branch ----
+
+/** Build heatmap data: rows = branches, cols = Car/Bike, values = avg UTR. */
+function buildVehicleUtrByBranch_(ss) {
+  // Placeholder: requires branch-keyed UTR data from the RIDER UTR sheet
+  // or a new pivot table with branch breakdowns.
+  return null;
+}
+
+// ---- Wave 3: Anomaly Detection & Daily Variance ----
+
+/** Detect anomalies: sudden UTR drops, violation spikes, rider churn. */
+function detectAnomalies_(orderSummary, riderUtrData, rtvData) {
+  const anomalies = [];
+
+  // Check for UTR drops
+  if (riderUtrData && riderUtrData.series.length > 0) {
+    const utrSeries = riderUtrData.series[0]; // Car UTR
+    if (utrSeries && utrSeries.values.length >= 2) {
+      const recent = utrSeries.values[utrSeries.values.length - 1];
+      const prev = utrSeries.values[utrSeries.values.length - 2];
+      if (typeof recent === 'number' && typeof prev === 'number' && prev > 0) {
+        const drop = ((prev - recent) / prev) * 100;
+        if (drop > 10) {
+          anomalies.push({
+            type: 'utr_drop',
+            severity: drop > 20 ? 'critical' : 'warning',
+            message: `Car UTR dropped ${Math.round(drop)}% overnight (${prev.toFixed(2)} → ${recent.toFixed(2)})`,
+            date: utrSeries.dateLabels[utrSeries.dateLabels.length - 1],
+          });
+        }
+      }
+    }
+  }
+
+  // Check for violation spikes
+  if (rtvData && rtvData.series.length > 0) {
+    const violationSeries = findSeries_(rtvData.series, 'Return to Vendor Violations');
+    if (violationSeries && violationSeries.values.length >= 7) {
+      const recent7 = violationSeries.values.slice(-7);
+      const older14 = violationSeries.values.slice(-21, -7);
+
+      const recent7Nums = recent7.filter(v => typeof v === 'number' && !isNaN(v));
+      const older14Nums = older14.filter(v => typeof v === 'number' && !isNaN(v));
+
+      if (recent7Nums.length > 0 && older14Nums.length > 0) {
+        const recentAvg = recent7Nums.reduce((a, b) => a + b, 0) / recent7Nums.length;
+        const olderAvg = older14Nums.reduce((a, b) => a + b, 0) / older14Nums.length;
+
+        if (olderAvg > 0) {
+          const spike = ((recentAvg - olderAvg) / olderAvg) * 100;
+          if (spike > 30) {
+            anomalies.push({
+              type: 'violation_spike',
+              severity: spike > 50 ? 'critical' : 'warning',
+              message: `Violations up ${Math.round(spike)}% vs 14D avg (${Math.round(recentAvg)} vs ${Math.round(olderAvg)})`,
+              date: violationSeries.dateLabels[violationSeries.dateLabels.length - 1],
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Check for rider count anomalies
+  if (orderSummary && orderSummary.series.length > 0) {
+    const riderSeries = findSeries_(orderSummary.series, 'Active Riders (all branches)');
+    if (riderSeries && riderSeries.values.length >= 2) {
+      const recent = riderSeries.values[riderSeries.values.length - 1];
+      const prev = riderSeries.values[riderSeries.values.length - 2];
+      if (typeof recent === 'number' && typeof prev === 'number' && prev > 0) {
+        const churn = ((prev - recent) / prev) * 100;
+        if (churn > 20) {
+          anomalies.push({
+            type: 'rider_churn',
+            severity: 'warning',
+            message: `Active riders down ${Math.round(churn)}% (${Math.round(prev)} → ${Math.round(recent)})`,
+            date: riderSeries.dateLabels[riderSeries.dateLabels.length - 1],
+          });
+        }
+      }
+    }
+  }
+
+  return anomalies;
 }

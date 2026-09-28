@@ -4,197 +4,570 @@
   <base target="_top">
   <meta charset="utf-8">
   <style>
-    .viz-root {
-      color-scheme: light;
-      --surface-1:      #fcfcfb;
-      --page-plane:     #f9f9f7;
-      --text-primary:   #0b0b0b;
-      --text-secondary: #52514e;
-      --text-muted:     #898781;
-      --gridline:       #e1e0d9;
-      --baseline:       #c3c2b7;
-      --border:         rgba(11,11,11,0.10);
-      --series-1:       #2a78d6; /* blue */
-      --status-good:      #0ca30c;
-      --status-warning:   #fab219;
-      --status-critical:  #d03b3b;
+    :root {
+      --talabat-red: #E74C3C;
+      --talabat-dark: #1A1A1A;
+      --talabat-light: #F5F5F5;
+      --text-primary: #0B0B0B;
+      --text-secondary: #666;
+      --text-muted: #999;
+      --border: #DDD;
+      --success: #27AE60;
+      --warning: #F39C12;
+      --critical: #E74C3C;
+      --info: #3498DB;
     }
+
     @media (prefers-color-scheme: dark) {
-      :root:where(:not([data-theme="light"])) .viz-root {
-        color-scheme: dark;
-        --surface-1:      #1a1a19;
-        --page-plane:     #0d0d0d;
-        --text-primary:   #ffffff;
-        --text-secondary: #c3c2b7;
-        --text-muted:     #898781;
-        --gridline:       #2c2c2a;
-        --baseline:       #383835;
-        --border:         rgba(255,255,255,0.10);
-        --series-1:       #3987e5;
-        --status-good:      #0ca30c;
-        --status-warning:   #fab219;
-        --status-critical:  #e66767;
+      :root {
+        --talabat-dark: #F5F5F5;
+        --talabat-light: #2A2A2A;
+        --text-primary: #FFF;
+        --text-secondary: #BBB;
+        --text-muted: #888;
+        --border: #444;
       }
     }
 
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      background: var(--page-plane);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--talabat-light);
       color: var(--text-primary);
+      line-height: 1.5;
     }
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
 
+    .wrap {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 20px 60px;
+    }
+
+    /* Header */
     .topbar {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 24px;
+      border-bottom: 3px solid var(--talabat-red);
+      padding-bottom: 16px;
+    }
+
+    .topbar-left h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0;
+      color: var(--talabat-red);
+    }
+
+    .topbar-left .meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .topbar-right {
+      display: flex;
       gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .refresh-btn {
+      background: var(--talabat-red);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .refresh-btn:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    .refresh-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    /* Date Range Selector */
+    .date-range-container {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
       margin-bottom: 20px;
     }
-    .topbar h1 { font-size: 20px; margin: 0; }
-    .topbar .meta { color: var(--text-secondary); font-size: 13px; }
-    .refresh-btn {
-      border: 1px solid var(--border);
-      background: var(--surface-1);
-      color: var(--text-primary);
-      border-radius: 8px;
-      padding: 8px 14px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .refresh-btn:hover { background: var(--gridline); }
-    .refresh-btn:disabled { opacity: 0.6; cursor: default; }
 
-    .range-selector { display: flex; gap: 6px; margin-bottom: 20px; }
-    .range-selector button {
+    .date-range-preset {
+      display: flex;
+      gap: 6px;
+    }
+
+    .preset-btn {
+      background: white;
       border: 1px solid var(--border);
-      background: var(--surface-1);
       color: var(--text-secondary);
-      border-radius: 8px;
-      padding: 6px 12px;
+      border-radius: 6px;
+      padding: 8px 14px;
       font-size: 12px;
-      cursor: pointer;
-    }
-    .range-selector button:hover { background: var(--gridline); }
-    .range-selector button.active {
-      color: var(--text-primary);
-      border-color: var(--text-primary);
       font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
     }
 
+    .preset-btn:hover {
+      border-color: var(--talabat-red);
+    }
+
+    .preset-btn.active {
+      background: var(--talabat-red);
+      color: white;
+      border-color: var(--talabat-red);
+    }
+
+    .date-picker-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .date-input {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px;
+      background: white;
+      color: var(--text-primary);
+    }
+
+    .date-input:focus {
+      outline: none;
+      border-color: var(--talabat-red);
+    }
+
+    /* Alerts & Anomalies */
+    .alerts-section {
+      margin-bottom: 20px;
+    }
+
+    .alert-banner {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alert-banner.warning {
+      background: rgba(243, 156, 18, 0.1);
+      border: 1px solid var(--warning);
+      color: var(--text-primary);
+    }
+
+    .alert-banner.critical {
+      background: rgba(231, 76, 60, 0.1);
+      border: 1px solid var(--critical);
+      color: var(--text-primary);
+    }
+
+    .alert-icon {
+      font-weight: bold;
+      font-size: 16px;
+    }
+
+    .alert-banner.warning .alert-icon {
+      color: var(--warning);
+    }
+
+    .alert-banner.critical .alert-icon {
+      color: var(--critical);
+    }
+
+    /* Cards & Sections */
     .card {
-      background: var(--surface-1);
+      background: white;
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 18px 20px;
+      padding: 20px;
       margin-bottom: 20px;
     }
-    .card h2 { font-size: 16px; margin: 0 0 14px; }
+
+    .card h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 16px;
+      color: var(--text-primary);
+    }
+
+    .card h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 16px 0 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
 
     .error-banner {
-      background: color-mix(in srgb, var(--status-critical) 12%, var(--surface-1));
-      border: 1px solid var(--status-critical);
+      background: rgba(231, 76, 60, 0.1);
+      border: 1px solid var(--critical);
       color: var(--text-primary);
       border-radius: 8px;
-      padding: 10px 12px;
+      padding: 12px;
       font-size: 13px;
       margin-bottom: 10px;
     }
 
+    /* KPI Tiles Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .kpi-tile {
+      background: var(--talabat-light);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .kpi-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--talabat-red);
+      margin-bottom: 4px;
+    }
+
+    .kpi-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .kpi-status {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .status-good { background: var(--success); }
+    .status-warning { background: var(--warning); }
+    .status-critical { background: var(--critical); }
+
+    .kpi-trend {
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+
+    .trend-up { color: var(--success); }
+    .trend-down { color: var(--critical); }
+
+    /* Series Grid (Sparklines) */
     .series-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 16px;
     }
+
     .series-box {
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 14px;
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--talabat-light);
     }
-    .series-box .name { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
-    .series-box .value {
-      font-size: 24px;
+
+    .series-box .name {
+      font-size: 12px;
+      color: var(--text-secondary);
       font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 2px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
     }
-    .series-box .sub { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
-    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
-    .status-good { background: var(--status-good); }
-    .status-warning { background: var(--status-warning); }
-    .status-critical { background: var(--status-critical); }
-    .status-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; margin-left: -4px; }
 
-    .spark { display: block; width: 100%; height: 64px; }
-    .spark-line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .spark-dot { fill: var(--series-1); }
-    .spark-empty { color: var(--text-muted); font-size: 11px; padding: 10px 0; }
+    .series-box .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--talabat-red);
+      margin-bottom: 4px;
+    }
 
-    .table-toggle {
+    .series-box .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .spark {
+      display: block;
+      width: 100%;
+      height: 60px;
+      margin-bottom: 10px;
+    }
+
+    .spark-line {
+      fill: none;
+      stroke: var(--talabat-red);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .spark-dot {
+      fill: var(--talabat-red);
+    }
+
+    .spark-empty {
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 10px 0;
+    }
+
+    .show-data-btn {
       background: none;
       border: none;
-      color: var(--text-secondary);
+      color: var(--info);
       font-size: 11px;
+      font-weight: 600;
       text-decoration: underline;
       cursor: pointer;
       padding: 0;
       margin-top: 10px;
     }
+
+    /* Table Styles */
     table.data-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 8px;
+      margin-top: 12px;
       font-size: 12px;
       font-variant-numeric: tabular-nums;
     }
-    table.data-table th, table.data-table td {
+
+    table.data-table th,
+    table.data-table td {
       text-align: left;
-      padding: 4px 6px;
-      border-bottom: 1px solid var(--gridline);
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border);
       color: var(--text-primary);
     }
-    table.data-table th { color: var(--text-secondary); font-weight: 500; }
-    .hidden { display: none; }
-    .empty-state { color: var(--text-muted); font-size: 13px; }
+
+    table.data-table th {
+      background: var(--talabat-light);
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    table.data-table tbody tr:hover {
+      background: rgba(231, 76, 60, 0.02);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .empty-state {
+      color: var(--text-muted);
+      font-size: 13px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    /* Branch Scorecard */
+    .branch-scorecard {
+      overflow-x: auto;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-badge.good {
+      background: rgba(39, 174, 96, 0.1);
+      color: var(--success);
+    }
+
+    .status-badge.warning {
+      background: rgba(243, 156, 18, 0.1);
+      color: var(--warning);
+    }
+
+    .status-badge.critical {
+      background: rgba(231, 76, 60, 0.1);
+      color: var(--critical);
+    }
+
+    /* Modal/Drawer */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.open {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-close {
+      float: right;
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+
+    .modal h3 {
+      margin-top: 0;
+    }
+
+    /* Heatmap */
+    .heatmap {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .heatmap-cell {
+      padding: 12px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+
+    .heatmap-value {
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .heat-cold { background: rgba(39, 174, 96, 0.2); } /* Good UTR */
+    .heat-warm { background: rgba(243, 156, 18, 0.2); } /* Warning UTR */
+    .heat-hot { background: rgba(231, 76, 60, 0.2); } /* Critical UTR */
   </style>
 </head>
 <body>
-  <div class="viz-root">
-    <div class="wrap">
-      <div class="topbar">
-        <div>
-          <h1>Tmart Hybrid Performance — Live Dashboard</h1>
-          <div class="meta" id="lastUpdated">Loading…</div>
-        </div>
-        <button class="refresh-btn" id="refreshBtn">Refresh now</button>
+  <div class="wrap">
+    <!-- Header -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1>Tmart Hybrid Dashboard</h1>
+        <div class="meta" id="lastUpdated">Loading…</div>
       </div>
-
-      <div class="range-selector" id="rangeSelector">
-        <button data-days="7">7D</button>
-        <button data-days="14">14D</button>
-        <button data-days="30" class="active">30D</button>
-        <button data-days="">All</button>
+      <div class="topbar-right">
+        <button class="refresh-btn" id="refreshBtn">⟳ Refresh</button>
       </div>
+    </div>
 
-      <div id="sections"></div>
+    <!-- Date Range Selector -->
+    <div class="date-range-container">
+      <div class="date-range-preset">
+        <button class="preset-btn active" data-days="7">7 Days</button>
+        <button class="preset-btn" data-days="14">14 Days</button>
+        <button class="preset-btn" data-days="30">30 Days</button>
+        <button class="preset-btn" data-days="">All Time</button>
+      </div>
+      <div class="date-picker-group">
+        <span style="font-size: 12px; color: var(--text-secondary);">Or:</span>
+        <input type="date" class="date-input" id="startDate" placeholder="Start">
+        <span style="font-size: 12px; color: var(--text-secondary);">to</span>
+        <input type="date" class="date-input" id="endDate" placeholder="End">
+        <button class="preset-btn" id="applyDateRange" style="background: var(--talabat-red); color: white; border: none;">Apply</button>
+      </div>
+    </div>
+
+    <!-- Alerts Section -->
+    <div class="alerts-section" id="alertsSection"></div>
+
+    <!-- Quick Metrics (Wave 1) -->
+    <div class="card" id="quickMetricsCard"></div>
+
+    <!-- Branch Performance Scorecard (Wave 1) -->
+    <div class="card" id="branchScorecardCard"></div>
+
+    <!-- Top Violators (Wave 1) -->
+    <div class="card" id="violatorsCard"></div>
+
+    <!-- Vehicle-Level UTR by Branch (Wave 2) -->
+    <div class="card" id="vehicleUtrCard"></div>
+
+    <!-- Original Sections -->
+    <div id="sections"></div>
+
+    <!-- Rider Detail Modal (Wave 2) -->
+    <div class="modal" id="riderModal">
+      <div class="modal-content">
+        <button class="modal-close" onclick="closeRiderModal()">&times;</button>
+        <h3 id="riderModalTitle">Rider Details</h3>
+        <div id="riderModalBody"></div>
+      </div>
     </div>
   </div>
 
   <script>
     var SECTION_ORDER = ['orderSummary', 'riderUtr', 'rtvViolation'];
-    var AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
+    var AUTO_REFRESH_MS = 5 * 60 * 1000;
     var uid = 0;
-    var currentDays = 30; // keep in sync with DEFAULT_RANGE_DAYS in Code.gs
+    var currentDays = 7;
+    var currentData = null;
 
     function fmtNumber(n) {
       if (n === undefined || n === null || isNaN(n)) return '—';
       return Math.abs(n) >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 1 })
                                   : (Math.round(n * 100) / 100).toString();
+    }
+
+    function fmtPercent(n) {
+      if (n === undefined || n === null || isNaN(n)) return '—';
+      return (Math.round(n * 100) / 100).toFixed(2) + '%';
     }
 
     function escapeHtml(s) {
@@ -204,28 +577,193 @@
     }
 
     function statusLabel(status) {
-      if (status === 'critical') return 'Off target';
-      if (status === 'warning') return 'Watch';
-      if (status === 'good') return 'On target';
+      if (status === 'critical') return 'CRITICAL';
+      if (status === 'warning') return 'WARNING';
+      if (status === 'good') return 'OK';
       return '';
     }
 
+    // Wave 1: Render Quick Metrics
+    function renderQuickMetrics(data) {
+      const card = document.getElementById('quickMetricsCard');
+      if (!data.metrics.hybridOrderShare && !data.metrics.topViolators && !data.metrics.branchScorecard.length) {
+        card.innerHTML = '';
+        return;
+      }
+
+      let html = '<h2>Quick Metrics</h2><div class="kpi-grid">';
+
+      if (data.metrics.hybridOrderShare) {
+        const share = data.metrics.hybridOrderShare;
+        const trend = share.trend ? (share.trend.direction === 'up' ? '↑' : '↓') + ' ' + share.trend.pct.toFixed(1) + '%' : '—';
+        html += `
+          <div class="kpi-tile">
+            <div class="kpi-label">Hybrid Order Share %</div>
+            <div class="kpi-value">${fmtPercent(share.value)}</div>
+            <div class="kpi-trend ${share.trend && share.trend.direction === 'up' ? 'trend-up' : 'trend-down'}">${trend}</div>
+          </div>
+        `;
+      }
+
+      html += '</div>';
+      card.innerHTML = html;
+    }
+
+    // Wave 1: Render Alerts
+    function renderAlerts(data) {
+      const section = document.getElementById('alertsSection');
+      if (!data.metrics.anomalies || !data.metrics.anomalies.length) {
+        section.innerHTML = '';
+        return;
+      }
+
+      let html = '';
+      data.metrics.anomalies.forEach(a => {
+        const icon = a.severity === 'critical' ? '⚠️' : '⚡';
+        html += `
+          <div class="alert-banner ${a.severity}">
+            <span class="alert-icon">${icon}</span>
+            <span>${escapeHtml(a.message)}</span>
+          </div>
+        `;
+      });
+
+      section.innerHTML = html;
+    }
+
+    // Wave 1: Render Top Violators
+    function renderTopViolators(data) {
+      const card = document.getElementById('violatorsCard');
+      if (!data.metrics.topViolators || !data.metrics.topViolators.length) {
+        card.innerHTML = '';
+        return;
+      }
+
+      let html = `
+        <h2>⚠️ Top Violating Riders (Last 7 Days)</h2>
+        <table class="data-table">
+          <tr>
+            <th>Rider ID</th>
+            <th>Branch</th>
+            <th>7D Violations</th>
+            <th>Status</th>
+            <th>Last Violation</th>
+          </tr>
+      `;
+
+      data.metrics.topViolators.slice(0, 10).forEach(v => {
+        const badge = v.isRepeatOffender ? 'critical' : 'warning';
+        const badgeText = v.isRepeatOffender ? 'REPEAT' : 'FLAGGED';
+        html += `
+          <tr>
+            <td><strong>${escapeHtml(v.riderId)}</strong></td>
+            <td>${escapeHtml(v.branch)}</td>
+            <td>${v.violations7d}</td>
+            <td><span class="status-badge ${badge}">${badgeText}</span></td>
+            <td>${escapeHtml(v.lastViolation)}</td>
+          </tr>
+        `;
+      });
+
+      html += '</table>';
+      card.innerHTML = html;
+    }
+
+    // Wave 1: Render Branch Scorecard
+    function renderBranchScorecard(data) {
+      const card = document.getElementById('branchScorecardCard');
+      if (!data.metrics.branchScorecard || !data.metrics.branchScorecard.length) {
+        card.innerHTML = '';
+        return;
+      }
+
+      let html = `
+        <h2>Branch Performance Scorecard</h2>
+        <div class="branch-scorecard">
+          <table class="data-table">
+            <tr>
+              <th>Branch</th>
+              <th>UTR (Car)</th>
+              <th>Status</th>
+              <th>Orders</th>
+              <th>Active Riders</th>
+              <th>Violations</th>
+              <th>Trend</th>
+            </tr>
+      `;
+
+      data.metrics.branchScorecard.forEach(b => {
+        html += `
+          <tr>
+            <td><strong>${escapeHtml(b.name)}</strong></td>
+            <td>${fmtNumber(b.utr)}</td>
+            <td><span class="status-badge ${b.status}">${statusLabel(b.status)}</span></td>
+            <td>${fmtNumber(b.orders)}</td>
+            <td>${fmtNumber(b.activeRiders)}</td>
+            <td>${fmtNumber(b.violations)}</td>
+            <td>${b.trend}</td>
+          </tr>
+        `;
+      });
+
+      html += '</table></div>';
+      card.innerHTML = html;
+    }
+
+    // Wave 2: Render Vehicle UTR by Branch
+    function renderVehicleUtrByBranch(data) {
+      const card = document.getElementById('vehicleUtrCard');
+      if (!data.metrics.vehicleUtrByBranch) {
+        card.innerHTML = '';
+        return;
+      }
+
+      let html = '<h2>Vehicle-Level UTR by Branch (Heatmap)</h2>';
+      if (!data.metrics.vehicleUtrByBranch.branches || !data.metrics.vehicleUtrByBranch.branches.length) {
+        html += '<p class="empty-state">Data coming soon...</p>';
+        card.innerHTML = html;
+        return;
+      }
+
+      html += '<table class="heatmap"><tr><th>Branch</th><th>Car UTR</th><th>Bike UTR</th></tr>';
+      data.metrics.vehicleUtrByBranch.branches.forEach(b => {
+        const carHeat = getHeatClass_(b.carUtr);
+        const bikeHeat = getHeatClass_(b.bikeUtr);
+        html += `
+          <tr>
+            <td>${escapeHtml(b.name)}</td>
+            <td class="heatmap-cell ${carHeat}"><div class="heatmap-value">${fmtNumber(b.carUtr)}</div></td>
+            <td class="heatmap-cell ${bikeHeat}"><div class="heatmap-value">${fmtNumber(b.bikeUtr)}</div></td>
+          </tr>
+        `;
+      });
+      html += '</table>';
+      card.innerHTML = html;
+    }
+
+    function getHeatClass_(utr) {
+      if (utr > 2.2) return 'heat-hot';
+      if (utr < 1.8) return 'heat-hot';
+      if (utr >= 1.85 && utr <= 2.0) return 'heat-cold';
+      return 'heat-warm';
+    }
+
+    // Original rendering functions
     function renderSeriesBox(key, s) {
       uid++;
       var boxId = 'box-' + uid;
       var tableId = 'table-' + uid;
-
       var kpi = s.kpi;
-      var dot = kpi && kpi.status ? '<span class="status-dot status-' + kpi.status + '"></span>' : '';
-      var statusText = kpi && kpi.status ? '<span class="status-label">' + statusLabel(kpi.status) + '</span>' : '';
+      var dot = kpi && kpi.status ? '<span class="kpi-status status-' + kpi.status + '"></span>' : '';
+      var statusText = kpi && kpi.status ? '<span style="font-size: 10px; color: var(--text-secondary);">' + statusLabel(kpi.status) + '</span>' : '';
 
       var html = (
         '<div class="series-box" id="' + boxId + '">' +
           '<div class="name">' + escapeHtml(s.name) + '</div>' +
-          '<div class="value">' + dot + (kpi ? fmtNumber(kpi.latest) : '—') + statusText + '</div>' +
+          '<div class="value">' + dot + (kpi ? fmtNumber(kpi.latest) : '—') + ' ' + statusText + '</div>' +
           '<div class="sub">' + (kpi ? 'avg ' + fmtNumber(kpi.average) + ' · total ' + fmtNumber(kpi.total) : 'no data') + '</div>' +
           renderSparkline(s) +
-          '<button class="table-toggle" data-target="' + tableId + '">Show data</button>' +
+          '<button class="show-data-btn" data-target="' + tableId + '">Show data</button>' +
           '<div id="' + tableId + '" class="hidden">' + renderSeriesTable(s) + '</div>' +
         '</div>'
       );
@@ -234,7 +772,7 @@
       wrapper.innerHTML = html;
       var node = wrapper.firstChild;
 
-      node.querySelector('.table-toggle').addEventListener('click', function (e) {
+      node.querySelector('.show-data-btn').addEventListener('click', function (e) {
         var target = document.getElementById(e.target.getAttribute('data-target'));
         var collapsed = target.classList.contains('hidden');
         target.classList.toggle('hidden');
@@ -252,8 +790,6 @@
       return '<table class="data-table">' + head + body + '</table>';
     }
 
-    // Plain inline SVG — no chart library, no network dependency, so a
-    // blocked/unreachable CDN can never leave the dashboard stuck loading.
     function renderSparkline(s) {
       var width = 100, height = 40, pad = 4;
       var nums = s.values.map(function (v) { return (typeof v === 'number' && !isNaN(v)) ? v : null; });
@@ -299,14 +835,13 @@
       var html = '<h2>' + escapeHtml(section.title) + '</h2>';
 
       if (section.error) {
-        html += '<div class="error-banner">Could not load this section: ' + escapeHtml(section.error) +
-                '<br>Check CONFIG.sheets.' + escapeHtml(key) + ' in Code.gs (sheet name / pivot anchors).</div>';
+        html += '<div class="error-banner">Could not load: ' + escapeHtml(section.error) + '</div>';
         card.innerHTML = html;
         return card;
       }
 
       if (!section.series.length) {
-        html += '<div class="empty-state">No data found yet.</div>';
+        html += '<div class="empty-state">No data found.</div>';
         card.innerHTML = html;
         return card;
       }
@@ -323,7 +858,14 @@
     }
 
     function render(data) {
+      currentData = data;
       document.getElementById('lastUpdated').textContent = 'Last updated ' + new Date(data.generatedAt).toLocaleString();
+
+      renderAlerts(data);
+      renderQuickMetrics(data);
+      renderBranchScorecard(data);
+      renderTopViolators(data);
+      renderVehicleUtrByBranch(data);
 
       var container = document.getElementById('sections');
       container.innerHTML = '';
@@ -340,21 +882,13 @@
     function refresh(forceBypassCache) {
       var btn = document.getElementById('refreshBtn');
       btn.disabled = true;
-      btn.textContent = 'Refreshing…';
 
-      // withSuccessHandler/withFailureHandler must be chained on
-      // google.script.run itself before picking the method name — chaining
-      // them on the method reference (e.g. google.script.run.getDashboardData
-      // .withSuccessHandler(...)) throws "withSuccessHandler is not a
-      // function", since that reference doesn't carry those methods.
       var runner = google.script.run.withSuccessHandler(function (data) {
         render(data);
         btn.disabled = false;
-        btn.textContent = 'Refresh now';
       }).withFailureHandler(function (err) {
         showLoadError(err);
         btn.disabled = false;
-        btn.textContent = 'Refresh now';
       });
 
       if (forceBypassCache) {
@@ -364,18 +898,35 @@
       }
     }
 
+    // Event listeners
     document.getElementById('refreshBtn').addEventListener('click', function () { refresh(true); });
 
-    Array.prototype.forEach.call(document.querySelectorAll('#rangeSelector button'), function (btn) {
+    Array.prototype.forEach.call(document.querySelectorAll('.preset-btn'), function (btn) {
       btn.addEventListener('click', function () {
+        if (btn === document.getElementById('applyDateRange')) return; // Skip apply button
         if (btn.classList.contains('active')) return;
-        Array.prototype.forEach.call(document.querySelectorAll('#rangeSelector button'), function (b) { b.classList.remove('active'); });
+        Array.prototype.forEach.call(document.querySelectorAll('.preset-btn:not(#applyDateRange)'), function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
         var raw = btn.getAttribute('data-days');
         currentDays = raw === '' ? null : Number(raw);
         refresh(false);
       });
     });
+
+    document.getElementById('applyDateRange').addEventListener('click', function () {
+      const start = new Date(document.getElementById('startDate').value);
+      const end = new Date(document.getElementById('endDate').value);
+      if (start && end && start < end) {
+        const days = Math.ceil((end - start) / 86400000);
+        currentDays = days;
+        Array.prototype.forEach.call(document.querySelectorAll('.preset-btn:not(#applyDateRange)'), function (b) { b.classList.remove('active'); });
+        refresh(false);
+      }
+    });
+
+    function closeRiderModal() {
+      document.getElementById('riderModal').classList.remove('open');
+    }
 
     refresh(false);
     setInterval(function () { refresh(false); }, AUTO_REFRESH_MS);
