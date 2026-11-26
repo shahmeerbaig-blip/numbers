@@ -19,6 +19,13 @@
  *      (agg_customer_braze_fraud_flag.network_shield_fraud_account_count) is
  *      the accurate version of "this is the same person on a new account."
  *
+ * Customer Lookup and Order Lookup tabs also attach the Talabat order-fail reason
+ * ("talabat_reason") as a sub-category under the contact/compensation reason:
+ * fct_order_info.order_fail_reason_id -> dim_order_fail_reason.talabat_reason,
+ * joined on order_id (comp_and_refund_events.order_id is a STRING, so it is
+ * SAFE_CAST to INT64; ~2% of Qatar claim orders have no match and show blank).
+ * fct_order_info is huge, so it is ALWAYS queried with an order_date bound.
+ *
  * Every row is also enriched with the customer's analytical_customer_id
  * (Talabat's standard cross-system customer key, resolved via
  * rltnp_account_x_identifiers) so results are ready to hand to a block
@@ -36,6 +43,31 @@
  */
 
 var BILLING_PROJECT = 'tlb-data-dev';
+
+// Order Lookup searches this many days back (see getOrderLookup for why it is bounded).
+var ORDER_SEARCH_DAYS = 365;
+
+// Live Order Tracker: reads a Google Sheet fed by a colleague's own BigQuery
+// access (we have none to fulfillment-dwh-production.curated_data_shared_data_stream.
+// order_stream), since it is a true live/placement-event feed, not a batch table -
+// see README.md "Live Order Tracker" section. Row layout confirmed directly
+// against the sheet (2026-11-26): order_id, order_placed_time, customer_id,
+// vendor_id, vendor_name, currency, order_value, payment_method, delivery_city,
+// delivery_area_id, delivery_latitude, delivery_longitude, event_timestamp,
+// latest_order_status, latest_status_time. Column order is looked up by header
+// name, not position, so it survives the sheet owner reordering columns.
+var LIVE_ORDERS_SHEET_ID = '1K7QTDW_kA7cXkHyldAwG6mFl58df_7RmoSLDC63FBzQ';
+var LIVE_ORDERS_SHEET_TAB = '500 QAR plus oders L12 hours';
+// A colleague-deployed Web App ( Execute as: Me, see live_order_feeder/Code.gs )
+// that refreshes the sheet's BigQuery Connected Sheet data source on demand.
+// Leave LIVE_REFRESH_URL blank to just read the sheet as last refreshed instead
+// (manually, or on whatever schedule the feeder's own time trigger runs on).
+var LIVE_REFRESH_URL = 'https://script.google.com/a/macros/talabat.com/s/AKfycbwWwf3YH8CUVjC8sQOldbLZmkQNvTCxytpM22Uo45Na9jJnKoQL4-pT1WLdM5Q8YgIw/exec';
+// NEVER commit the real value here - paste it directly into your own deployed
+// copy of this file in script.google.com. It must match the feeder script's
+// own REFRESH_KEY exactly (that script also still has the unrotated default
+// placeholder as of 2026-11-26 - rotate it there first, see live_order_feeder/Code.gs).
+var LIVE_REFRESH_KEY = '';
 
 var LATE_OR_ADDRESS_REASONS = [
   'Delayed delivery',
@@ -167,6 +199,52 @@ function attachAnalyticalIds_(rows, idField) {
     r.analytical_customer_id = map[String(r[idField])] || null;
   });
   return rows;
+}
+
+
+function strParam_(name, value) {
+  return { name: name, parameterType: { type: 'STRING' }, parameterValue: { value: String(value) } };
+}
+
+/** Returns the value only if it is a strict YYYY-MM-DD string, so it is safe to inline as DATE '...'. */
+function dateLiteral_(s) {
+  s = String(s == null ? '' : s);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+/**
+ * order_id -> talabat_reason, via fct_order_info.order_fail_reason_id ->
+ * dim_order_fail_reason. fct_order_info must always be date-bounded (an
+ * unbounded single-order lookup scans ~200GB and trips the bytes-billed cap),
+ * so the caller passes the min/max order date (YYYY-MM-DD) of the orders; a
+ * 1-day pad on each side covers UTC vs local-date differences. Non-numeric
+ * (global-format) order IDs and unmatched orders are simply absent from the map.
+ * Successful orders return the literal string 'N/A' (nothing failed).
+ */
+function getTalabatReasons_(orderIds, minDate, maxDate) {
+  var lo = dateLiteral_(minDate), hi = dateLiteral_(maxDate);
+  var ids = [];
+  orderIds.forEach(function (id) {
+    var n = Number(id);
+    if (id != null && isFinite(n) && String(Math.trunc(n)) === String(id).trim()) ids.push(Math.trunc(n));
+  });
+  ids = Array.from(new Set(ids));
+  if (!ids.length || !lo || !hi) return {};
+
+  var sql = [
+    'SELECT f.order_id, r.talabat_reason',
+    'FROM `tlb-data-prod.data_platform.fct_order_info` f',
+    'LEFT JOIN `tlb-data-prod.data_platform.dim_order_fail_reason` r ON r.order_fail_reason_id = f.order_fail_reason_id',
+    'WHERE f.country_Code = \'QA\'',
+    '  AND f.order_date BETWEEN DATE_SUB(DATE \'' + lo + '\', INTERVAL 1 DAY) AND DATE_ADD(DATE \'' + hi + '\', INTERVAL 1 DAY)',
+    '  AND f.order_id IN (' + ids.join(',') + ')'
+  ].join('\n');
+
+  var map = {};
+  runQuery_(sql, []).forEach(function (r) {
+    if (r.talabat_reason) map[String(r.order_id)] = r.talabat_reason;
+  });
+  return map;
 }
 
 /**
@@ -451,6 +529,13 @@ function getCustomerLookup(opts) {
   ].join('\n');
   var orders = runQuery_(ordersSql, []);
 
+  // Talabat reason (order-level fail reason) as a sub-category of the claim reason.
+  var orderDates = orders.map(function (o) { return o.order_date; }).filter(dateLiteral_).sort();
+  if (orderDates.length) {
+    var talabatMap = getTalabatReasons_(orders.map(function (o) { return o.order_id; }), orderDates[0], orderDates[orderDates.length - 1]);
+    orders.forEach(function (o) { o.talabat_reason = talabatMap[String(o.order_id)] || null; });
+  }
+
   var locSql = [
     'SELECT',
     '  o.global_order_id AS order_id, o.created_date AS order_date,',
@@ -521,5 +606,293 @@ function getCustomerLookup(opts) {
       repeatOffender: !!(claims && claims.claim_count >= 3),
       fraudNetwork: maxLinkedFraud >= 1
     }
+  };
+}
+
+/**
+ * Order Lookup tab: given one order ID, returns
+ *   1. the customer's claim/compensation cases on that order (every event in
+ *      comp_and_refund_events) with the Talabat order-fail reason as a sub-category,
+ *   2. the fraud-rule results for that order / its customer, using the same
+ *      rules and default thresholds as the Fraud Patterns tab:
+ *        - Location change: THIS order's dropoff pin shifted > 500 m AND delivery
+ *          delay > 5 min AND the order has a late-delivery/wrong-address claim.
+ *        - Repeat claimer: the customer has >= 3 claim events in the last
+ *          `daysBack` days (the percentile risk score needs the whole customer
+ *          base, so it is not recomputed per order).
+ *        - Fraud network: Shield links the customer's account, by device/mobile
+ *          number, to >= 1 confirmed fraud account.
+ * Also reports Shield's own order-level customer_fraud_flag from fct_order_info.
+ */
+function getOrderLookup(opts) {
+  opts = opts || {};
+  var query = String(opts.query || '').trim();
+  if (!query) return { error: 'Enter an order ID to search.' };
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(query)) return { error: 'Order ID can only contain letters, digits, "-" and "_".' };
+  var daysBack = clamp_(opts.daysBack, 90, 1, 3650);
+  var isNumeric = /^\d+$/.test(query);
+
+  // 1. Claim / compensation cases on this order. comp_and_refund_events is not clustered by
+  // order_id, so an unbounded order lookup scans ~90GB and trips the bytes-billed cap; a
+  // 365-day bound costs ~6GB. Claims older than that are not found by this tab.
+  var eventsSql = [
+    'SELECT',
+    '  event_id, event_timestamp, created_date, order_created_date, event_type, origin, request_type,',
+    '  customer_id, vendor_id, contact_reason_l1, contact_reason_l2, contact_reason_l3, purpose, outcome,',
+    '  compensation_category, csat_score, compensation_value_eur, refund_value_eur,',
+    '  ROUND(COALESCE(compensation_value_eur, 0) + COALESCE(refund_value_eur, 0), 2) AS total_value_eur',
+    'FROM `fulfillment-dwh-production.curated_data_shared.comp_and_refund_events`',
+    'WHERE country = \'Qatar\' AND order_id = @oid',
+    '  AND created_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ' + ORDER_SEARCH_DAYS + ' DAY)',
+    'ORDER BY event_timestamp DESC',
+    'LIMIT 200'
+  ].join('\n');
+  var events = runQuery_(eventsSql, [strParam_('oid', query)]);
+
+  // Date bounds keep fct_order_info / orders scans small. Claims carry the order date;
+  // with no claims we fall back to the last ORDER_SEARCH_DAYS days.
+  var knownDate = null;
+  events.forEach(function (e) { if (!knownDate && dateLiteral_(e.order_created_date)) knownDate = e.order_created_date; });
+  var loSql = knownDate ? 'DATE_SUB(DATE \'' + knownDate + '\', INTERVAL 1 DAY)' : 'DATE_SUB(CURRENT_DATE(), INTERVAL ' + ORDER_SEARCH_DAYS + ' DAY)';
+  var hiSql = knownDate ? 'DATE_ADD(DATE \'' + knownDate + '\', INTERVAL 1 DAY)' : 'CURRENT_DATE()';
+
+  // 2. Order header + Talabat reason + Shield order-level flag (fct_order_info keys on INT order_id).
+  var order = null;
+  if (isNumeric) {
+    var orderSql = [
+      'SELECT f.order_id, f.order_date, f.account_id, f.analytical_customer_id, f.vendor_id,',
+      '  f.is_successful, f.is_refunded, f.customer_fraud_flag, ROUND(f.gmv_amount_eur, 2) AS gmv_eur,',
+      '  r.talabat_reason',
+      'FROM `tlb-data-prod.data_platform.fct_order_info` f',
+      'LEFT JOIN `tlb-data-prod.data_platform.dim_order_fail_reason` r ON r.order_fail_reason_id = f.order_fail_reason_id',
+      'WHERE f.country_Code = \'QA\'',
+      '  AND f.order_date BETWEEN ' + loSql + ' AND ' + hiSql,
+      '  AND f.order_id = ' + Number(query),
+      'LIMIT 1'
+    ].join('\n');
+    order = runQuery_(orderSql, [])[0] || null;
+  }
+
+  if (!events.length && !order) {
+    return { error: 'No Qatar order found for "' + query + '" (searched claim history and, for numeric IDs, the last ' + ORDER_SEARCH_DAYS + ' days of orders). Orders older than that are outside the search window.', query: query };
+  }
+
+  var rawCustomerId = (events[0] && events[0].customer_id) || (order && order.account_id) || null;
+  var rawCustomerNumeric = rawCustomerId != null && /^\d+$/.test(String(rawCustomerId));
+  var analyticalId = (order && order.analytical_customer_id) || null;
+  if (!analyticalId && rawCustomerNumeric) analyticalId = resolveAnalyticalIds_([rawCustomerId])[String(rawCustomerId)] || null;
+  var talabatReason = order ? (order.talabat_reason || null) : null;
+
+  // 3a. Location-change check on THIS order only.
+  var locationChange = { checked: false, shiftMeters: null, delaySeconds: null, hasLateOrAddressClaim: false, violated: false };
+  var hasLateClaim = events.some(function (e) { return LATE_OR_ADDRESS_REASONS.indexOf(e.contact_reason_l3) !== -1; });
+  var locSql = [
+    'SELECT ROUND(ST_DISTANCE(d.expected_dropoff, d.dropoff), 0) AS dropoff_shift_meters,',
+    '  d.timings.delivery_delay AS delivery_delay_seconds',
+    'FROM `fulfillment-dwh-production.curated_data_shared.orders` o',
+    'LEFT JOIN UNNEST(o.deliveries) d',
+    'WHERE o.country_code = \'qa\' AND o.global_order_id = @oid',
+    '  AND o.created_date BETWEEN ' + loSql + ' AND ' + hiSql,
+    '  AND d.is_primary AND NOT d.is_returning AND NOT d.is_redelivery',
+    '  AND d.expected_dropoff IS NOT NULL AND d.dropoff IS NOT NULL',
+    'LIMIT 1'
+  ].join('\n');
+  var loc = runQuery_(locSql, [strParam_('oid', query)])[0];
+  if (loc) {
+    locationChange.checked = true;
+    locationChange.shiftMeters = Number(loc.dropoff_shift_meters);
+    locationChange.delaySeconds = Number(loc.delivery_delay_seconds);
+    locationChange.hasLateOrAddressClaim = hasLateClaim;
+    locationChange.violated = locationChange.shiftMeters > 500 && locationChange.delaySeconds > 300 && hasLateClaim;
+  }
+
+  // 3b + 3c. Customer-level checks (need a numeric raw account ID).
+  var repeat = { claimCount: 0, totalValueEur: 0, cancellationClaimCount: 0, windowDays: daysBack, violated: false };
+  var network = { linkedFraudAccounts: 0, networkSize: null, isBlocked: false, isShieldFraud: false, isShieldVoucherFraud: false, isDeviceRooted: false, isAppCloned: false, found: false, violated: false };
+  if (rawCustomerNumeric) {
+    var claimsSql = [
+      'SELECT COUNT(*) AS claim_count,',
+      '  ROUND(SUM(COALESCE(compensation_value_eur, 0) + COALESCE(refund_value_eur, 0)), 2) AS total_claim_value_eur,',
+      '  COUNTIF(contact_reason_l2 = \'Cancellation\') AS cancellation_claim_count',
+      'FROM `fulfillment-dwh-production.curated_data_shared.comp_and_refund_events`',
+      'WHERE country = \'Qatar\' AND customer_id = ' + quotedIntListLiteral_([rawCustomerId]),
+      '  AND created_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ' + daysBack + ' DAY)'
+    ].join('\n');
+    var c = runQuery_(claimsSql, [])[0];
+    if (c) {
+      repeat.claimCount = Number(c.claim_count) || 0;
+      repeat.totalValueEur = Number(c.total_claim_value_eur) || 0;
+      repeat.cancellationClaimCount = Number(c.cancellation_claim_count) || 0;
+      repeat.violated = repeat.claimCount >= 3;
+    }
+
+    var networkSql = [
+      'SELECT network_size, network_shield_fraud_account_count, is_shield_fraud, is_shield_voucher_fraud,',
+      '  is_blocked, is_device_rooted, is_app_cloned',
+      'FROM `tlb-data-prod.data_platform.agg_customer_braze_fraud_flag`',
+      'WHERE country_code = \'QA\' AND account_id = ' + Math.trunc(Number(rawCustomerId)),
+      'LIMIT 1'
+    ].join('\n');
+    var n = runQuery_(networkSql, [])[0];
+    if (n) {
+      network.found = true;
+      network.linkedFraudAccounts = Number(n.network_shield_fraud_account_count) || 0;
+      network.networkSize = n.network_size == null ? null : Number(n.network_size);
+      network.isBlocked = n.is_blocked === 'true' || n.is_blocked === true;
+      network.isShieldFraud = n.is_shield_fraud === 'true' || n.is_shield_fraud === true;
+      network.isShieldVoucherFraud = n.is_shield_voucher_fraud === 'true' || n.is_shield_voucher_fraud === true;
+      network.isDeviceRooted = n.is_device_rooted === 'true' || n.is_device_rooted === true;
+      network.isAppCloned = n.is_app_cloned === 'true' || n.is_app_cloned === true;
+      network.violated = network.linkedFraudAccounts >= 1;
+    }
+  }
+
+  return {
+    query: query,
+    order: order ? {
+      orderId: order.order_id, orderDate: order.order_date, vendorId: order.vendor_id,
+      isSuccessful: order.is_successful === 'true' || order.is_successful === true,
+      isRefunded: order.is_refunded === 'true' || order.is_refunded === true,
+      gmvEur: order.gmv_eur == null ? null : Number(order.gmv_eur),
+      shieldOrderFlag: order.customer_fraud_flag || null
+    } : null,
+    talabatReason: talabatReason,
+    rawCustomerId: rawCustomerId,
+    analyticalId: analyticalId,
+    events: events.map(function (e) { e.talabat_reason = talabatReason; return e; }),
+    violations: { locationChange: locationChange, repeatOffender: repeat, fraudNetwork: network },
+    thresholds: { minShiftMeters: 500, minDelaySeconds: 300, minClaims: 3, minLinkedFraud: 1 }
+  };
+}
+
+/**
+ * Live Order Tracker tab: given an order ID, searches the colleague-owned
+ * "live orders" Google Sheet (fed from fulfillment-dwh-production.
+ * curated_data_shared_data_stream.order_stream - a true live/placement-event
+ * feed that we have no BigQuery access to ourselves, see README.md "Live
+ * Order Tracker") for that order, resolves the customer's analytical ID, and
+ * runs the same customer-level fraud checks as Order Lookup (repeat-offender
+ * claim history, Shield fraud-network linkage) against their account. Those
+ * checks work even though this order itself was placed seconds ago, since
+ * they only depend on the customer's past history, never on this order
+ * having reached any BigQuery batch table yet.
+ *
+ * Only covers whatever the sheet's own filter keeps (confirmed 2026-11-26:
+ * Qatar orders >=500 QAR placed in the trailing 12 hours) - anything outside
+ * that is a miss here, not a "doesn't exist." Use Order Lookup for those.
+ */
+function getLiveOrderTracker(opts) {
+  opts = opts || {};
+  var query = String(opts.query || '').trim();
+  if (!query) return { error: 'Enter an order ID to search.' };
+  if (!/^\d{1,20}$/.test(query)) return { error: 'Order ID must be numeric.' };
+
+  if (LIVE_REFRESH_URL) {
+    try {
+      UrlFetchApp.fetch(LIVE_REFRESH_URL + '?key=' + encodeURIComponent(LIVE_REFRESH_KEY), { muteHttpExceptions: true });
+    } catch (e) {
+      Logger.log('Live Order Tracker refresh call failed (continuing with last-refreshed data): %s', e);
+    }
+  }
+
+  var sheet = SpreadsheetApp.openById(LIVE_ORDERS_SHEET_ID).getSheetByName(LIVE_ORDERS_SHEET_TAB);
+  if (!sheet) return { error: 'Live orders sheet tab "' + LIVE_ORDERS_SHEET_TAB + '" not found.' };
+
+  var values = sheet.getDataRange().getValues();
+  if (!values.length) return { error: 'Live orders sheet is empty.' };
+
+  // Looked up by header name, not column position, so it survives the sheet
+  // owner reordering/adding columns on their side.
+  var headers = values[0].map(function (h) { return String(h).trim(); });
+  var colIndex = {};
+  headers.forEach(function (h, i) { colIndex[h] = i; });
+
+  var orderIdCol = colIndex['order_id'];
+  if (orderIdCol === undefined) return { error: 'Live orders sheet has no "order_id" column - check LIVE_ORDERS_SHEET_TAB / header row.' };
+
+  var matchRow = null;
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][orderIdCol]).trim() === query) { matchRow = values[i]; break; }
+  }
+  if (!matchRow) {
+    return {
+      error: 'Order "' + query + '" is not in the live tracker. It only covers Qatar orders over 500 QAR placed in the last 12 hours - older, lower-value, or non-Qatar orders won\'t show here. Try Order Lookup instead.',
+      query: query
+    };
+  }
+
+  function col(name) { var idx = colIndex[name]; return idx === undefined ? null : matchRow[idx]; }
+
+  var rawCustomerId = col('customer_id');
+  var rawCustomerNumeric = rawCustomerId != null && /^\d+$/.test(String(rawCustomerId));
+  var analyticalId = rawCustomerNumeric ? (resolveAnalyticalIds_([rawCustomerId])[String(rawCustomerId)] || null) : null;
+
+  var order = {
+    orderId: col('order_id'),
+    orderPlacedTime: col('order_placed_time'),
+    vendorId: col('vendor_id'),
+    vendorName: col('vendor_name'),
+    currency: col('currency'),
+    orderValue: col('order_value') == null || col('order_value') === '' ? null : Number(col('order_value')),
+    paymentMethod: col('payment_method'),
+    deliveryCity: col('delivery_city'),
+    deliveryAreaId: col('delivery_area_id'),
+    deliveryLatitude: col('delivery_latitude') == null || col('delivery_latitude') === '' ? null : Number(col('delivery_latitude')),
+    deliveryLongitude: col('delivery_longitude') == null || col('delivery_longitude') === '' ? null : Number(col('delivery_longitude')),
+    eventTimestamp: col('event_timestamp'),
+    latestOrderStatus: col('latest_order_status'),
+    latestStatusTime: col('latest_status_time')
+  };
+
+  // Customer-level fraud checks, same shape as getOrderLookup - these work
+  // for a brand-new order because they only query the customer's history.
+  var repeatWindowDays = 90;
+  var repeat = { claimCount: 0, totalValueEur: 0, cancellationClaimCount: 0, windowDays: repeatWindowDays, violated: false };
+  var network = { linkedFraudAccounts: 0, networkSize: null, isBlocked: false, isShieldFraud: false, isShieldVoucherFraud: false, isDeviceRooted: false, isAppCloned: false, found: false, violated: false };
+
+  if (rawCustomerNumeric) {
+    var claimsSql = [
+      'SELECT COUNT(*) AS claim_count,',
+      '  ROUND(SUM(COALESCE(compensation_value_eur, 0) + COALESCE(refund_value_eur, 0)), 2) AS total_claim_value_eur,',
+      '  COUNTIF(contact_reason_l2 = \'Cancellation\') AS cancellation_claim_count',
+      'FROM `fulfillment-dwh-production.curated_data_shared.comp_and_refund_events`',
+      'WHERE country = \'Qatar\' AND customer_id = ' + quotedIntListLiteral_([rawCustomerId]),
+      '  AND created_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ' + repeatWindowDays + ' DAY)'
+    ].join('\n');
+    var c = runQuery_(claimsSql, [])[0];
+    if (c) {
+      repeat.claimCount = Number(c.claim_count) || 0;
+      repeat.totalValueEur = Number(c.total_claim_value_eur) || 0;
+      repeat.cancellationClaimCount = Number(c.cancellation_claim_count) || 0;
+      repeat.violated = repeat.claimCount >= 3;
+    }
+
+    var networkSql = [
+      'SELECT network_size, network_shield_fraud_account_count, is_shield_fraud, is_shield_voucher_fraud,',
+      '  is_blocked, is_device_rooted, is_app_cloned',
+      'FROM `tlb-data-prod.data_platform.agg_customer_braze_fraud_flag`',
+      'WHERE country_code = \'QA\' AND account_id = ' + Math.trunc(Number(rawCustomerId)),
+      'LIMIT 1'
+    ].join('\n');
+    var n = runQuery_(networkSql, [])[0];
+    if (n) {
+      network.found = true;
+      network.linkedFraudAccounts = Number(n.network_shield_fraud_account_count) || 0;
+      network.networkSize = n.network_size == null ? null : Number(n.network_size);
+      network.isBlocked = n.is_blocked === 'true' || n.is_blocked === true;
+      network.isShieldFraud = n.is_shield_fraud === 'true' || n.is_shield_fraud === true;
+      network.isShieldVoucherFraud = n.is_shield_voucher_fraud === 'true' || n.is_shield_voucher_fraud === true;
+      network.isDeviceRooted = n.is_device_rooted === 'true' || n.is_device_rooted === true;
+      network.isAppCloned = n.is_app_cloned === 'true' || n.is_app_cloned === true;
+      network.violated = network.linkedFraudAccounts >= 1;
+    }
+  }
+
+  return {
+    query: query,
+    order: order,
+    rawCustomerId: rawCustomerId,
+    analyticalId: analyticalId,
+    violations: { repeatOffender: repeat, fraudNetwork: network }
   };
 }

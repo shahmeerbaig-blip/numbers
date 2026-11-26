@@ -84,6 +84,41 @@ Two cost notes specific to this tab:
   tab — it's a deliberate one-customer investigation action, not something
   that runs on every keystroke.
 
+## Live Order Tracker tab
+
+A third tab for looking up an order that's still in flight — placed seconds
+or minutes ago, before it's reached any BigQuery batch table this dashboard
+can query directly. Search by numeric order ID and it shows the order's
+current status (vendor, value, payment method, latest status) plus the
+customer behind it, with the same repeat-offender and fraud-network checks
+as Order Lookup — those work even for a brand-new order, since they only
+depend on the customer's own history, not this specific order.
+
+This tab reads a Google Sheet (`LIVE_ORDERS_SHEET_ID` /
+`LIVE_ORDERS_SHEET_TAB` in `Code.gs`) rather than querying BigQuery itself:
+`fulfillment-dwh-production.curated_data_shared_data_stream.order_stream` is
+a true real-time order-placement event stream, but this dashboard has no
+BigQuery access to it. Instead, whoever does have access owns a Sheet fed
+from it via a Connected Sheet to BigQuery, filtered to whatever scope they
+chose (currently: Qatar orders over 500 QAR placed in the last 12 hours —
+anything outside that range is a miss in this tab specifically, not "no
+fraud signal," so fall back to Order Lookup for those).
+
+Setup specific to this tab:
+- Needs the `https://www.googleapis.com/auth/spreadsheets.readonly` scope
+  in `appsscript.json` (already included) and the viewer needs read access
+  to that Sheet — a plain Sheets share, no BigQuery permission involved.
+- `LIVE_REFRESH_URL` / `LIVE_REFRESH_KEY` in `Code.gs` call a tiny separate
+  Web App (see `live_order_feeder/Code.gs`) that the Sheet's owner deploys
+  themselves, which re-runs the Sheet's Connected Sheet refresh under their
+  own BigQuery credentials right before this tab reads it — so refreshing
+  never needs this dashboard's viewers to have BigQuery access to the stream
+  either. `LIVE_REFRESH_KEY` is a shared secret gating that endpoint; set
+  your own real value directly in your deployed copy, never commit it.
+- The Sheet's columns are looked up by header name, not position, so
+  reordering columns on the Sheet owner's side doesn't break this tab —
+  but renaming a column, or renaming the tab itself, does.
+
 ## Toggles on the dashboard
 
 | Toggle | Scope | Default | What it does |

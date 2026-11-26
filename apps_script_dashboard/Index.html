@@ -236,6 +236,7 @@
   <div class="tab-bar">
     <button class="tab active" id="tab-btn-patterns" data-tab="patterns">Fraud Patterns</button>
     <button class="tab" id="tab-btn-lookup" data-tab="lookup">Customer Lookup</button>
+    <button class="tab" id="tab-btn-live" data-tab="live">Live Order Tracker</button>
   </div>
 
   <div id="tab-patterns" class="tab-panel">
@@ -468,6 +469,60 @@
       </div>
     </div>
   </div><!-- /tab-lookup -->
+
+  <div id="tab-live" class="tab-panel" style="display:none;">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">Live Order Tracker</div>
+          <h2>Look up an order that's still in flight</h2>
+          <p>Reads a Google Sheet fed live from the order-placement stream, which this dashboard has no direct
+             BigQuery access to itself &mdash; so this tab only covers whatever that sheet's own filter keeps
+             (currently Qatar orders over 500 QAR placed in the last 12 hours). Anything outside that range
+             isn't "not fraud," it's just outside this sheet &mdash; use Customer/Order Lookup for it instead.</p>
+        </div>
+      </div>
+      <div class="controls" style="margin-top: 0;">
+        <div class="control" style="flex: 1; min-width: 260px;">
+          <label for="liveQuery">Order ID</label>
+          <input type="text" id="liveQuery" placeholder="e.g. 4747063329" style="width: 100%;">
+        </div>
+        <button class="btn btn-primary" id="liveSearchBtn" style="align-self: flex-end;">Search</button>
+      </div>
+    </div>
+
+    <div id="liveEmptyState" class="card">
+      <div class="empty-state">Search a live order ID above to see its status and the customer behind it.</div>
+    </div>
+
+    <div id="liveResult" style="display:none;">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Order</div>
+            <h2 id="liveOrderHeading">&mdash;</h2>
+            <p id="liveOrderSub"></p>
+          </div>
+        </div>
+        <div class="stat-grid" id="liveOrderStats"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Customer behind this order</div>
+            <h2 id="liveCustomerHeading">&mdash;</h2>
+            <p>Repeat-claim and fraud-network checks against this customer's own history &mdash; these work even
+               though the order was placed moments ago, since they don't depend on this order itself.</p>
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="liveViewCustomerBtn">View full history in Customer Lookup</button>
+          </div>
+        </div>
+        <div class="stat-grid" id="liveCustomerBadges"></div>
+      </div>
+    </div>
+  </div><!-- /tab-live -->
 
   <footer>
     Source: fulfillment-dwh-production.curated_data_shared (orders, comp_and_refund_events) and
@@ -1050,8 +1105,13 @@
       btn.classList.add('active');
       document.getElementById('tab-patterns').style.display = btn.dataset.tab === 'patterns' ? '' : 'none';
       document.getElementById('tab-lookup').style.display = btn.dataset.tab === 'lookup' ? '' : 'none';
+      document.getElementById('tab-live').style.display = btn.dataset.tab === 'live' ? '' : 'none';
     });
   });
+
+  function switchToTab(tabName) {
+    document.querySelector('.tab[data-tab="' + tabName + '"]').click();
+  }
 
   /* ---------- customer lookup ---------- */
   document.querySelectorAll('.pill[data-lookup-days]').forEach(function (btn) {
@@ -1164,6 +1224,76 @@
 
   function renderLookupTable() {
     renderSortableTable('table-lookup', LOOKUP_COLUMNS, state.lookup, renderLookupTable, 'lookup');
+  }
+
+  /* ---------- live order tracker ---------- */
+  document.getElementById('liveSearchBtn').addEventListener('click', loadLiveOrderTracker);
+  document.getElementById('liveQuery').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') loadLiveOrderTracker();
+  });
+
+  function loadLiveOrderTracker() {
+    var query = document.getElementById('liveQuery').value.trim();
+    if (!query) { showToast('Enter an order ID first'); return; }
+    document.getElementById('liveEmptyState').style.display = 'none';
+    document.getElementById('liveResult').style.display = 'none';
+    clearError();
+    var searchBtn = document.getElementById('liveSearchBtn');
+    searchBtn.disabled = true;
+    searchBtn.textContent = 'Searching...';
+    google.script.run
+      .withSuccessHandler(function (result) {
+        searchBtn.disabled = false;
+        searchBtn.textContent = 'Search';
+        if (result.error) {
+          document.getElementById('liveEmptyState').style.display = '';
+          document.getElementById('liveEmptyState').querySelector('.empty-state').textContent = result.error;
+          return;
+        }
+        renderLiveOrderResult(result);
+      })
+      .withFailureHandler(function (err) {
+        searchBtn.disabled = false;
+        searchBtn.textContent = 'Search';
+        document.getElementById('liveEmptyState').style.display = '';
+        showError('Live order lookup failed: ' + (err && err.message ? err.message : err));
+      })
+      .getLiveOrderTracker({ query: query });
+  }
+
+  function renderLiveOrderResult(result) {
+    document.getElementById('liveResult').style.display = '';
+    var o = result.order;
+
+    document.getElementById('liveOrderHeading').textContent = 'Order ' + o.orderId + (o.latestOrderStatus ? ' — ' + o.latestOrderStatus : '');
+    document.getElementById('liveOrderSub').textContent = [o.vendorName, o.deliveryCity].filter(Boolean).join(' · ');
+
+    document.getElementById('liveOrderStats').innerHTML = [
+      statTile('Order value', (o.currency || '') + ' ' + (o.orderValue != null ? formatNum(o.orderValue, 2) : '—')),
+      statTile('Payment method', o.paymentMethod || '—'),
+      statTile('Placed at', o.orderPlacedTime || '—'),
+      statTile('Latest status', o.latestOrderStatus || '—'),
+      statTile('Status as of', o.latestStatusTime || '—')
+    ].join('');
+
+    document.getElementById('liveCustomerHeading').textContent = result.analyticalId || result.rawCustomerId || '—';
+
+    var repeat = result.violations.repeatOffender;
+    var net = result.violations.fraudNetwork;
+    var badges = [];
+    if (repeat.violated) badges.push(badgeTile('High claim frequency', repeat.claimCount + ' claims in last ' + repeat.windowDays + ' days', 'HIGH'));
+    if (net.violated) badges.push(badgeTile('Fraud network linked', net.linkedFraudAccounts + ' linked fraud accounts', 'HIGH'));
+    if (net.found && net.isBlocked) badges.push(badgeTile('Already blocked', 'this account is already blocked', 'HIGH'));
+    if (!badges.length) badges.push(badgeTile('No patterns triggered', 'in this customer’s history', 'LOW'));
+    document.getElementById('liveCustomerBadges').innerHTML = badges.join('');
+
+    var viewBtn = document.getElementById('liveViewCustomerBtn');
+    var lookupId = result.analyticalId || result.rawCustomerId;
+    viewBtn.onclick = function () {
+      switchToTab('lookup');
+      document.getElementById('lookupQuery').value = lookupId;
+      loadCustomerLookup();
+    };
   }
 
   /* ---------- wire up CSV export buttons ---------- */
