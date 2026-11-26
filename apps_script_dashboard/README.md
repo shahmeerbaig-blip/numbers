@@ -84,9 +84,29 @@ Two cost notes specific to this tab:
   tab — it's a deliberate one-customer investigation action, not something
   that runs on every keystroke.
 
+## Order Lookup tab
+
+A third tab for investigating a single order: search by numeric order ID and
+it shows every compensation/refund case raised on that order (each with the
+Talabat order-fail reason — `fct_order_info.order_fail_reason_id` →
+`dim_order_fail_reason.talabat_reason` — shown as a sub-category under the
+contact/compensation reason), plus the same three fraud rules as the Fraud
+Patterns tab evaluated for this specific order and its customer:
+
+- **Location change** is checked on this order only (its own pin shift +
+  delay + whether it has a late/wrong-address claim).
+- **Repeat claimer** and **fraud network** are customer-level, same as
+  Customer Lookup — the repeat-claimer window has its own pill selector
+  (30/90/180/365 days), independent of the Fraud Patterns date range.
+
+Searches the last 365 days (`ORDER_SEARCH_DAYS` in `Code.gs`) — both for
+claim history (`comp_and_refund_events` isn't clustered by `order_id`, so an
+unbounded scan trips BigQuery's bytes-billed cap) and, for numeric order IDs,
+`fct_order_info`. Orders older than that aren't found by this tab.
+
 ## Live Order Tracker tab
 
-A third tab for looking up an order that's still in flight — placed seconds
+A fourth tab for looking up an order that's still in flight — placed seconds
 or minutes ago, before it's reached any BigQuery batch table this dashboard
 can query directly. Search by numeric order ID and it shows the order's
 current status (vendor, value, payment method, latest status) plus the

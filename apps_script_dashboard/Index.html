@@ -217,6 +217,9 @@
   }
   footer { color: var(--text-muted); font-size: 11.5px; margin-top: 8px; line-height: 1.6; }
   footer a { color: var(--accent); }
+  .sub-reason { display: block; font-size: 10.5px; color: var(--text-muted); font-weight: 400; margin-top: 1px; }
+  .sub-reason::before { content: "\21B3  "; }
+  .rule-tile .evidence { font-size: 11.5px; color: var(--text-secondary); margin-top: 6px; line-height: 1.45; white-space: normal; }
 </style>
 </head>
 <body class="viz-root">
@@ -236,6 +239,7 @@
   <div class="tab-bar">
     <button class="tab active" id="tab-btn-patterns" data-tab="patterns">Fraud Patterns</button>
     <button class="tab" id="tab-btn-lookup" data-tab="lookup">Customer Lookup</button>
+    <button class="tab" id="tab-btn-order" data-tab="order">Order Lookup</button>
     <button class="tab" id="tab-btn-live" data-tab="live">Live Order Tracker</button>
   </div>
 
@@ -470,6 +474,83 @@
     </div>
   </div><!-- /tab-lookup -->
 
+  <div id="tab-order" class="tab-panel" style="display:none;">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">Order Lookup</div>
+          <h2>Investigate a single order</h2>
+          <p>Search by order ID. Shows every compensation / refund case raised on that order (with the Talabat
+             reason as a sub-category), plus the fraud rules the order or its customer trigger. Searches the last 365 days.</p>
+        </div>
+      </div>
+      <div class="controls" style="margin-top: 0;">
+        <div class="control" style="flex: 1; min-width: 260px;">
+          <label for="orderQuery">Order ID</label>
+          <input type="text" id="orderQuery" placeholder="e.g. 4675651169" style="width: 100%;">
+        </div>
+        <button class="btn btn-primary" id="orderSearchBtn" style="align-self: flex-end;">Search</button>
+      </div>
+      <div class="filter-row" style="margin-top: 12px;">
+        <span class="label">Repeat-claimer window</span>
+        <button class="pill" data-order-days="30">Last 30 days</button>
+        <button class="pill active" data-order-days="90">Last 90 days</button>
+        <button class="pill" data-order-days="180">Last 180 days</button>
+        <button class="pill" data-order-days="365">Last 365 days</button>
+      </div>
+    </div>
+
+    <div id="orderEmptyState" class="card">
+      <div class="empty-state">Search for an order above to see its cases and fraud violations.</div>
+    </div>
+
+    <div id="orderResult" style="display:none;">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Order</div>
+            <h2 id="orderHeading">&mdash;</h2>
+            <p id="orderNote"></p>
+          </div>
+        </div>
+        <div class="stat-grid" id="orderStats"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Fraud violations</div>
+            <h2>Rule checks for this order &amp; customer</h2>
+            <p>Same rules and default thresholds as the Fraud Patterns tab. Location change is checked on this
+               order only; repeat claimer and fraud network are customer-level.</p>
+          </div>
+        </div>
+        <div class="stat-grid" id="orderViolations"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Customer order cases</div>
+            <h2>Compensation &amp; refund events on this order</h2>
+            <p>One row per event. The Talabat reason is the order-level fail reason and is the same for every event on the order.</p>
+          </div>
+        </div>
+        <div class="btn-row" style="margin: 4px 0 8px;">
+          <button class="btn" id="export-order-all">Download CSV (all)</button>
+          <button class="btn btn-primary" id="export-order-selected" disabled>Download CSV (0 selected)</button>
+        </div>
+        <div class="table-scroll">
+          <table id="table-order">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="order-pagination"></div>
+      </div>
+    </div>
+  </div><!-- /tab-order -->
+
   <div id="tab-live" class="tab-panel" style="display:none;">
     <div class="card">
       <div class="card-head">
@@ -526,7 +607,7 @@
 
   <footer>
     Source: fulfillment-dwh-production.curated_data_shared (orders, comp_and_refund_events) and
-    tlb-data-prod.data_platform (agg_customer_braze_fraud_flag, rltnp_account_x_identifiers). Billing project: tlb-data-dev.
+    tlb-data-prod.data_platform (agg_customer_braze_fraud_flag, rltnp_account_x_identifiers, fct_order_info, dim_order_fail_reason). Billing project: tlb-data-dev.
     Analytical customer IDs are resolved live per refresh, which adds a fixed ~10&ndash;30GB BigQuery scan on top
     of each section's own query &mdash; use the toggles deliberately rather than on every keystroke.
   </footer>
@@ -540,7 +621,8 @@
     location: { rows: [], sortKey: 'customer_pattern_claim_count', sortDir: 'desc', selected: new Set() },
     risk: { rows: [], sortKey: 'risk_score_0_100', sortDir: 'desc', selected: new Set() },
     network: { rows: [], sortKey: 'network_shield_fraud_account_count', sortDir: 'desc', selected: new Set() },
-    lookup: { rows: [], sortKey: 'order_date', sortDir: 'desc', selected: new Set(), daysBack: 90, allTime: false }
+    lookup: { rows: [], sortKey: 'order_date', sortDir: 'desc', selected: new Set(), daysBack: 90, allTime: false },
+    order: { rows: [], sortKey: 'event_timestamp', sortDir: 'desc', selected: new Set(), daysBack: 90 }
   };
 
   function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
@@ -1105,6 +1187,7 @@
       btn.classList.add('active');
       document.getElementById('tab-patterns').style.display = btn.dataset.tab === 'patterns' ? '' : 'none';
       document.getElementById('tab-lookup').style.display = btn.dataset.tab === 'lookup' ? '' : 'none';
+      document.getElementById('tab-order').style.display = btn.dataset.tab === 'order' ? '' : 'none';
       document.getElementById('tab-live').style.display = btn.dataset.tab === 'live' ? '' : 'none';
     });
   });
@@ -1213,7 +1296,7 @@
   var LOOKUP_COLUMNS = [
     { key: 'order_id', label: 'Order' },
     { key: 'order_date', label: 'Order date' },
-    { key: 'reasons', label: 'Reason(s)' },
+    { key: 'reasons', label: 'Reason(s)', render: function (v, r) { return reasonCell(v, r.talabat_reason); } },
     { key: 'event_types', label: 'Event type(s)' },
     { key: 'outcomes', label: 'Outcome(s)' },
     { key: 'request_types', label: 'Request type(s)' },
@@ -1222,8 +1305,152 @@
     { key: 'last_claim_date', label: 'Last claim' }
   ];
 
+  // Same columns for CSV, with the Talabat reason as its own column right after Reason(s).
+  var LOOKUP_CSV_COLUMNS = LOOKUP_COLUMNS.reduce(function (acc, c) {
+    acc.push(c);
+    if (c.key === 'reasons') acc.push({ key: 'talabat_reason', label: 'Talabat reason' });
+    return acc;
+  }, []);
+
+  function reasonCell(reason, talabatReason) {
+    return esc(reason || '') + (talabatReason ? '<span class="sub-reason">Talabat: ' + esc(talabatReason) + '</span>' : '');
+  }
+
   function renderLookupTable() {
     renderSortableTable('table-lookup', LOOKUP_COLUMNS, state.lookup, renderLookupTable, 'lookup');
+  }
+
+  /* ---------- order lookup ---------- */
+  document.querySelectorAll('.pill[data-order-days]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.pill[data-order-days]').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      state.order.daysBack = Number(btn.dataset.orderDays);
+    });
+  });
+  document.getElementById('orderSearchBtn').addEventListener('click', loadOrderLookup);
+  document.getElementById('orderQuery').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') loadOrderLookup();
+  });
+
+  function loadOrderLookup() {
+    var query = document.getElementById('orderQuery').value.trim();
+    if (!query) { showToast('Enter an order ID first'); return; }
+    document.getElementById('orderEmptyState').style.display = 'none';
+    document.getElementById('orderResult').style.display = 'none';
+    clearError();
+    var btn = document.getElementById('orderSearchBtn');
+    btn.disabled = true;
+    btn.textContent = 'Searching...';
+    google.script.run
+      .withSuccessHandler(function (result) {
+        btn.disabled = false;
+        btn.textContent = 'Search';
+        if (result.error) {
+          document.getElementById('orderEmptyState').style.display = '';
+          document.getElementById('orderEmptyState').querySelector('.empty-state').textContent = result.error;
+          return;
+        }
+        renderOrderResult(result);
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Search';
+        document.getElementById('orderEmptyState').style.display = '';
+        showError('Order lookup failed: ' + (err && err.message ? err.message : err));
+      })
+      .getOrderLookup({ query: query, daysBack: state.order.daysBack });
+  }
+
+  function ruleTile(label, violated, headline, evidence) {
+    return '<div class="stat-tile rule-tile"><div class="label">' + esc(label) +
+      ' <span class="tier-badge tier-' + (violated ? 'HIGH' : 'LOW') + '">' + (violated ? 'FLAG' : 'CLEAR') + '</span></div>' +
+      '<div class="value" style="font-size:15px;">' + esc(headline) + '</div>' +
+      '<div class="evidence">' + esc(evidence) + '</div></div>';
+  }
+
+  function renderOrderResult(result) {
+    document.getElementById('orderResult').style.display = '';
+    document.getElementById('orderHeading').textContent = 'Order ' + result.query;
+    var idParts = [];
+    if (result.analyticalId) idParts.push('Customer (analytical): ' + result.analyticalId);
+    if (result.rawCustomerId) idParts.push('raw account ID: ' + result.rawCustomerId);
+    document.getElementById('orderNote').textContent = idParts.join(' — ');
+
+    var o = result.order;
+    var events = result.events || [];
+    var totalValue = events.reduce(function (s, e) { return s + num(e.total_value_eur); }, 0);
+    document.getElementById('orderStats').innerHTML = [
+      statTile('Cases (events)', formatCompact(events.length)),
+      statTile('Total refunded/comp (EUR)', '€' + formatNum(totalValue, 2)),
+      statTile('Talabat reason', result.talabatReason || '—'),
+      o ? statTile('Order date', o.orderDate || '—') : '',
+      o ? statTile('Delivered?', o.isSuccessful ? 'Yes' : 'No') : '',
+      o && o.gmvEur != null ? statTile('GMV (EUR)', '€' + formatNum(o.gmvEur, 2)) : '',
+      o && o.shieldOrderFlag ? statTile('Shield order flag', o.shieldOrderFlag) : ''
+    ].filter(Boolean).join('');
+
+    var v = result.violations, th = result.thresholds;
+    var lc = v.locationChange, ro = v.repeatOffender, fn = v.fraudNetwork;
+    var lcHeadline, lcEvidence;
+    if (!lc.checked) {
+      lcHeadline = 'Not checked';
+      lcEvidence = 'No dropoff-pin data found for this order (needs both expected and actual dropoff).';
+    } else {
+      lcHeadline = Math.round(lc.shiftMeters) + ' m shift, ' + (lc.delaySeconds / 60).toFixed(1) + ' min delay';
+      lcEvidence = 'Flag needs pin shift > ' + th.minShiftMeters + ' m, delay > ' + (th.minDelaySeconds / 60) + ' min and a late-delivery / wrong-address claim' +
+        (lc.hasLateOrAddressClaim ? ' (claim present).' : ' (no such claim on this order).');
+    }
+    var fnHeadline = fn.found ? (fn.linkedFraudAccounts + ' linked fraud account' + (fn.linkedFraudAccounts === 1 ? '' : 's')) : 'No Shield record';
+    var fnEvidence = fn.found
+      ? 'Network size ' + (fn.networkSize == null ? '—' : fn.networkSize) + '; blocked: ' + (fn.isBlocked ? 'yes' : 'no') +
+        '; Shield fraud: ' + (fn.isShieldFraud ? 'yes' : 'no') + '; rooted device: ' + (fn.isDeviceRooted ? 'yes' : 'no') +
+        '; cloned app: ' + (fn.isAppCloned ? 'yes' : 'no') + '.'
+      : 'Customer not found in agg_customer_braze_fraud_flag (or ID not numeric).';
+    document.getElementById('orderViolations').innerHTML = [
+      ruleTile('Location-change abuse', lc.violated, lcHeadline, lcEvidence),
+      ruleTile('High claim frequency', ro.violated, ro.claimCount + ' claims in ' + ro.windowDays + ' days',
+        'Flag at ' + th.minClaims + '+ claims. Value €' + formatNum(ro.totalValueEur, 2) + '; ' + ro.cancellationClaimCount + ' of them cancellations.'),
+      ruleTile('Fraud network linked', fn.violated, fnHeadline, fnEvidence)
+    ].join('');
+
+    state.order.rows = events.map(function (e, i) {
+      return Object.assign({}, e, {
+        _rowId: 'order-' + i,
+        total_value_eur: num(e.total_value_eur),
+        compensation_value_eur: num(e.compensation_value_eur),
+        refund_value_eur: num(e.refund_value_eur),
+        csat_score: e.csat_score == null ? null : num(e.csat_score)
+      });
+    });
+    state.order.selected = new Set();
+    state.order.page = 1;
+    renderOrderTable();
+    updateSelectedButton('order', state.order);
+  }
+
+  var ORDER_COLUMNS = [
+    { key: 'event_timestamp', label: 'Event time (UTC)' },
+    { key: 'event_type', label: 'Event type' },
+    { key: 'origin', label: 'Source' },
+    { key: 'contact_reason_l2', label: 'Reason (L2)' },
+    { key: 'contact_reason_l3', label: 'Reason (L3)', render: function (v, r) { return reasonCell(v, r.talabat_reason); } },
+    { key: 'purpose', label: 'Purpose' },
+    { key: 'outcome', label: 'Outcome' },
+    { key: 'request_type', label: 'Request type' },
+    { key: 'csat_score', label: 'CSAT', num: true },
+    { key: 'compensation_value_eur', label: 'Comp (EUR)', num: true, transform: function (v) { return formatNum(v, 2); } },
+    { key: 'refund_value_eur', label: 'Refund (EUR)', num: true, transform: function (v) { return formatNum(v, 2); } },
+    { key: 'total_value_eur', label: 'Total (EUR)', num: true, transform: function (v) { return formatNum(v, 2); } }
+  ];
+  var ORDER_CSV_COLUMNS = ORDER_COLUMNS.reduce(function (acc, c) {
+    acc.push(c);
+    if (c.key === 'contact_reason_l3') acc.push({ key: 'talabat_reason', label: 'Talabat reason' });
+    return acc;
+  }, []);
+
+  function renderOrderTable() {
+    renderSortableTable('table-order', ORDER_COLUMNS, state.order, renderOrderTable, 'order');
   }
 
   /* ---------- live order tracker ---------- */
@@ -1300,7 +1527,8 @@
   wireExportButtons('location', LOCATION_COLUMNS, state.location, function () { return state.location.rows; });
   wireExportButtons('risk', RISK_COLUMNS, state.risk, function () { return state.risk._filteredForTable || []; });
   wireExportButtons('network', NETWORK_COLUMNS, state.network, function () { return state.network.rows; });
-  wireExportButtons('lookup', LOOKUP_COLUMNS, state.lookup, function () { return state.lookup.rows; });
+  wireExportButtons('lookup', LOOKUP_CSV_COLUMNS, state.lookup, function () { return state.lookup.rows; });
+  wireExportButtons('order', ORDER_CSV_COLUMNS, state.order, function () { return state.order.rows; });
 
   /* ---------- initial load ---------- */
   loadLocationData();
