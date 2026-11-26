@@ -63,11 +63,13 @@ var LIVE_ORDERS_SHEET_TAB = '500 QAR plus oders L12 hours';
 // Leave LIVE_REFRESH_URL blank to just read the sheet as last refreshed instead
 // (manually, or on whatever schedule the feeder's own time trigger runs on).
 var LIVE_REFRESH_URL = 'https://script.google.com/a/macros/talabat.com/s/AKfycbwWwf3YH8CUVjC8sQOldbLZmkQNvTCxytpM22Uo45Na9jJnKoQL4-pT1WLdM5Q8YgIw/exec';
-// NEVER commit the real value here - paste it directly into your own deployed
-// copy of this file in script.google.com. It must match the feeder script's
-// own REFRESH_KEY exactly (that script also still has the unrotated default
-// placeholder as of 2026-11-26 - rotate it there first, see live_order_feeder/Code.gs).
-var LIVE_REFRESH_KEY = '';
+// Must match the feeder script's own REFRESH_KEY exactly (live_order_feeder/Code.gs).
+// Confirmed 2026-11-26: left as the template's own default placeholder string,
+// not rotated to a real secret - this value is not actually secret (it's a
+// known default, now also in this repo's history), so the refresh endpoint
+// is effectively open to anyone who has or guesses the deployed URL. Rotate
+// both this and the feeder's copy to a real random string when that's acceptable.
+var LIVE_REFRESH_KEY = 'REPLACE_WITH_A_RANDOM_SHARED_SECRET';
 
 var LATE_OR_ADDRESS_REASONS = [
   'Delayed delivery',
