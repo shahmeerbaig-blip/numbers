@@ -128,8 +128,10 @@ anything outside that range is a miss in this tab specifically, not "no
 fraud signal," so fall back to Order Lookup for those).
 
 Setup specific to this tab:
-- Needs the `https://www.googleapis.com/auth/spreadsheets.readonly` scope
-  in `appsscript.json` (already included). Since this deployment executes
+- Needs the `https://www.googleapis.com/auth/spreadsheets` scope in
+  `appsscript.json` (already included) — `SpreadsheetApp.openById()` throws
+  "Specified permissions are not sufficient" on the `.readonly` variant even
+  though this tab only ever reads, confirmed directly. Since this deployment executes
   as the deploying account rather than each viewer (see Setup step 6), only
   the deploying account needs read access to that Sheet — a plain Sheets
   share, no BigQuery permission involved, and nothing viewers need.
