@@ -38,8 +38,11 @@
  *      - BigQuery jobUser (or equivalent) on BILLING_PROJECT below
  *      - Read access to fulfillment-dwh-production.curated_data_shared and
  *        tlb-data-prod.data_platform
- *   3. Deploy > New deployment > Web app. Execute as "User accessing the web
- *      app" so BigQuery runs under each viewer's own credentials/quota.
+ *   3. Deploy > New deployment > Web app. Execute as "Me (the deploying
+ *      account)" - every viewer's BigQuery (and Live Order Tracker Sheets)
+ *      calls run under the deploying account's own credentials/quota, not
+ *      each viewer's own - so only the deploying account needs BigQuery
+ *      access and Sheet access, not every person who opens the dashboard.
  */
 
 var BILLING_PROJECT = 'tlb-data-dev';

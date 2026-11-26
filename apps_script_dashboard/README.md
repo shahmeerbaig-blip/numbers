@@ -18,15 +18,18 @@ Three files, paste directly into a Google Apps Script project:
    used to validate all three queries during development, since neither
    `fulfillment-dwh-production` nor `tlb-data-prod` grants job-create
    directly.
-6. Deploy → New deployment → type "Web app". Execute as **User accessing the
-   web app** (so BigQuery runs under each viewer's own credentials/quota,
-   not yours) and set access to whoever should see this.
+6. Deploy → New deployment → type "Web app". Execute as **Me (the deploying
+   account)** — every viewer's BigQuery (and Live Order Tracker Sheets) calls
+   run under the deploying account's own credentials/quota, not each
+   viewer's — and set access to whoever should see this.
 7. Open the deployed URL. First run will prompt for OAuth consent
    (BigQuery read-only scope).
 
-Each viewer needs read access to `fulfillment-dwh-production.curated_data_shared`,
-`tlb-data-prod.data_platform` (for the fraud/identity tables), and job-create
-on `tlb-data-dev`.
+Only the deploying account needs read access to
+`fulfillment-dwh-production.curated_data_shared`, `tlb-data-prod.data_platform`
+(for the fraud/identity tables), job-create on `tlb-data-dev`, and read access
+to the Live Order Tracker Sheet — viewers of the dashboard itself don't need
+any of these grants.
 
 ## The three sections
 
@@ -126,15 +129,19 @@ fraud signal," so fall back to Order Lookup for those).
 
 Setup specific to this tab:
 - Needs the `https://www.googleapis.com/auth/spreadsheets.readonly` scope
-  in `appsscript.json` (already included) and the viewer needs read access
-  to that Sheet — a plain Sheets share, no BigQuery permission involved.
+  in `appsscript.json` (already included). Since this deployment executes
+  as the deploying account rather than each viewer (see Setup step 6), only
+  the deploying account needs read access to that Sheet — a plain Sheets
+  share, no BigQuery permission involved, and nothing viewers need.
 - `LIVE_REFRESH_URL` / `LIVE_REFRESH_KEY` in `Code.gs` call a tiny separate
   Web App (see `live_order_feeder/Code.gs`) that the Sheet's owner deploys
   themselves, which re-runs the Sheet's Connected Sheet refresh under their
   own BigQuery credentials right before this tab reads it — so refreshing
-  never needs this dashboard's viewers to have BigQuery access to the stream
-  either. `LIVE_REFRESH_KEY` is a shared secret gating that endpoint; set
-  your own real value directly in your deployed copy, never commit it.
+  never needs this dashboard's deploying account to have BigQuery access to
+  the stream either. `LIVE_REFRESH_KEY` is meant as a shared secret gating
+  that endpoint — keep it a real rotated value if the endpoint should
+  actually be gated; a known/default value leaves it open to anyone with
+  the URL.
 - The Sheet's columns are looked up by header name, not position, so
   reordering columns on the Sheet owner's side doesn't break this tab —
   but renaming a column, or renaming the tab itself, does.
