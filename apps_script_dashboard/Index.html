@@ -1472,12 +1472,22 @@
       .withSuccessHandler(function (result) {
         searchBtn.disabled = false;
         searchBtn.textContent = 'Search';
-        if (result.error) {
+        try {
+          if (!result) {
+            document.getElementById('liveEmptyState').style.display = '';
+            showError('Live order lookup returned no data (unexpected empty response).');
+            return;
+          }
+          if (result.error) {
+            document.getElementById('liveEmptyState').style.display = '';
+            document.getElementById('liveEmptyState').querySelector('.empty-state').textContent = result.error;
+            return;
+          }
+          renderLiveOrderResult(result);
+        } catch (e) {
           document.getElementById('liveEmptyState').style.display = '';
-          document.getElementById('liveEmptyState').querySelector('.empty-state').textContent = result.error;
-          return;
+          showError('Live order lookup rendering failed: ' + (e && e.message ? e.message : e));
         }
-        renderLiveOrderResult(result);
       })
       .withFailureHandler(function (err) {
         searchBtn.disabled = false;
