@@ -826,7 +826,19 @@ function getLiveOrderTracker(opts) {
     };
   }
 
-  function col(name) { var idx = colIndex[name]; return idx === undefined ? null : matchRow[idx]; }
+  // Sheet cells read via getValues() come back as native types (Date, Number,
+  // Boolean), unlike runQuery_'s BigQuery rows which are always plain strings.
+  // A native Date object in the returned payload silently breaks the
+  // google.script.run client bridge (the client gets an empty response, no
+  // error) - confirmed directly, 2026-11-26. Defuse every Date here, once,
+  // so no call site needs to think about it.
+  function col(name) {
+    var idx = colIndex[name];
+    if (idx === undefined) return null;
+    var v = matchRow[idx];
+    if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    return v;
+  }
 
   var rawCustomerId = col('customer_id');
   var rawCustomerNumeric = rawCustomerId != null && /^\d+$/.test(String(rawCustomerId));
