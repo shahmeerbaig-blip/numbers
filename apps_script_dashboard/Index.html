@@ -601,6 +601,7 @@
           </div>
         </div>
         <div class="stat-grid" id="liveCustomerBadges"></div>
+        <div class="stat-grid" id="liveCustomerStats"></div>
       </div>
     </div>
   </div><!-- /tab-live -->
@@ -1276,13 +1277,16 @@
 
     var c = result.claims;
     var net = result.network && result.network[0];
+    var os = result.orderStats;
     document.getElementById('lookupStats').innerHTML = [
       statTile('Orders (claims history)', formatCompact(result.orders.length)),
       c ? statTile('Total claims', formatCompact(c.claim_count)) : '',
       c ? statTile('Total value (EUR)', '€' + formatCompact(c.total_claim_value_eur)) : '',
       c ? statTile('Item vs cancellation', c.item_claim_count + ' / ' + c.cancellation_claim_count) : '',
       net ? statTile('Blocked?', bool(net.is_blocked) ? 'YES' : 'No') : '',
-      net ? statTile('Shield fraud flag?', bool(net.is_shield_fraud) ? 'YES' : 'No') : ''
+      net ? statTile('Shield fraud flag?', bool(net.is_shield_fraud) ? 'YES' : 'No') : '',
+      os ? statTile('Orders (' + os.windowDays + 'd)', os.totalOrders + ' total (' + os.successfulOrders + ' ok / ' + os.cancelledOrders + ' cancelled)') : '',
+      os ? statTile('Cancellation rate (' + os.windowDays + 'd)', os.cancellationRatePct + '%') : ''
     ].filter(Boolean).join('');
 
     state.lookup.rows = result.orders.map(function (r, i) {
@@ -1380,6 +1384,7 @@
     var o = result.order;
     var events = result.events || [];
     var totalValue = events.reduce(function (s, e) { return s + num(e.total_value_eur); }, 0);
+    var os = result.orderStats;
     document.getElementById('orderStats').innerHTML = [
       statTile('Cases (events)', formatCompact(events.length)),
       statTile('Total refunded/comp (EUR)', '€' + formatNum(totalValue, 2)),
@@ -1387,6 +1392,8 @@
       o ? statTile('Order date', o.orderDate || '—') : '',
       o ? statTile('Delivered?', o.isSuccessful ? 'Yes' : 'No') : '',
       o && o.gmvEur != null ? statTile('GMV (EUR)', '€' + formatNum(o.gmvEur, 2)) : '',
+      os ? statTile('Customer orders (' + os.windowDays + 'd)', os.totalOrders + ' total (' + os.successfulOrders + ' ok / ' + os.cancelledOrders + ' cancelled)') : '',
+      os ? statTile('Customer cancellation rate (' + os.windowDays + 'd)', os.cancellationRatePct + '%') : '',
       o && o.shieldOrderFlag ? statTile('Shield order flag', o.shieldOrderFlag) : ''
     ].filter(Boolean).join('');
 
@@ -1523,6 +1530,12 @@
     if (net.found && net.isBlocked) badges.push(badgeTile('Already blocked', 'this account is already blocked', 'HIGH'));
     if (!badges.length) badges.push(badgeTile('No patterns triggered', 'in this customer’s history', 'LOW'));
     document.getElementById('liveCustomerBadges').innerHTML = badges.join('');
+
+    var os = result.orderStats;
+    document.getElementById('liveCustomerStats').innerHTML = os ? [
+      statTile('Orders (' + os.windowDays + 'd)', os.totalOrders + ' total (' + os.successfulOrders + ' ok / ' + os.cancelledOrders + ' cancelled)'),
+      statTile('Cancellation rate (' + os.windowDays + 'd)', os.cancellationRatePct + '%')
+    ].join('') : '';
 
     var viewBtn = document.getElementById('liveViewCustomerBtn');
     var lookupId = result.analyticalId || result.rawCustomerId;

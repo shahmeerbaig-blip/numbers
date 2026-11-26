@@ -453,6 +453,44 @@ function quotedIntListLiteral_(ids) {
 }
 
 /**
+ * Customer-level order outcome summary: total orders, successful, and
+ * cancelled, over a trailing window (fct_order_info is huge, so always
+ * date-bounded). "Cancelled" is fct_order_info.is_refunded specifically,
+ * not simply NOT is_successful - verified directly (QA, trailing 30 days):
+ * of orders with is_successful = false, 45,787 also have is_refunded = true
+ * (a clean order-level cancellation/refund), vs 492,981 with is_refunded =
+ * false (failed for some other reason - e.g. still in progress at the time
+ * of the snapshot - not a cancellation). Used by Customer Lookup, Order
+ * Lookup and Live Order Tracker so cancellation rate reads the same
+ * everywhere.
+ */
+function getCustomerOrderStats_(accountIds, daysBack) {
+  var idList = intListLiteral_(accountIds);
+  var sql = [
+    'SELECT',
+    '  COUNT(*) AS total_orders,',
+    '  COUNTIF(is_successful) AS successful_orders,',
+    '  COUNTIF(is_refunded) AS cancelled_orders',
+    'FROM `tlb-data-prod.data_platform.fct_order_info`',
+    'WHERE country_Code = \'QA\'',
+    '  AND account_id IN (' + idList + ')',
+    '  AND order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ' + daysBack + ' DAY)'
+  ].join('\n');
+
+  var r = runQuery_(sql, [])[0];
+  var total = r ? Number(r.total_orders) || 0 : 0;
+  var successful = r ? Number(r.successful_orders) || 0 : 0;
+  var cancelled = r ? Number(r.cancelled_orders) || 0 : 0;
+  return {
+    windowDays: daysBack,
+    totalOrders: total,
+    successfulOrders: successful,
+    cancelledOrders: cancelled,
+    cancellationRatePct: total ? Math.round((cancelled / total) * 1000) / 10 : 0
+  };
+}
+
+/**
  * Customer Lookup tab: given a search string (an analytical_customer_id or
  * a raw numeric customer/account ID), resolves it to the underlying raw
  * account_id(s), then pulls their order-level claim history, checks all
@@ -596,12 +634,15 @@ function getCustomerLookup(opts) {
   var networkRows = runQuery_(networkSql, []);
   var maxLinkedFraud = networkRows.reduce(function (m, r) { return Math.max(m, Number(r.network_shield_fraud_account_count) || 0); }, 0);
 
+  var orderStats = getCustomerOrderStats_(accountIds, locDaysBack);
+
   return {
     query: query,
     analyticalId: analyticalId,
     accountIds: accountIds,
     linkedAccountNote: linkedAccountNote,
     orders: orders,
+    orderStats: orderStats,
     locationChangeOrders: locationRows,
     locationChangeFlaggedCount: locationFlagged.length,
     claims: claims,
@@ -714,7 +755,9 @@ function getOrderLookup(opts) {
   // 3b + 3c. Customer-level checks (need a numeric raw account ID).
   var repeat = { claimCount: 0, totalValueEur: 0, cancellationClaimCount: 0, windowDays: daysBack, violated: false };
   var network = { linkedFraudAccounts: 0, networkSize: null, isBlocked: false, isShieldFraud: false, isShieldVoucherFraud: false, isDeviceRooted: false, isAppCloned: false, found: false, violated: false };
+  var orderStats = { windowDays: daysBack, totalOrders: 0, successfulOrders: 0, cancelledOrders: 0, cancellationRatePct: 0 };
   if (rawCustomerNumeric) {
+    orderStats = getCustomerOrderStats_([rawCustomerId], daysBack);
     var claimsSql = [
       'SELECT COUNT(*) AS claim_count,',
       '  ROUND(SUM(COALESCE(compensation_value_eur, 0) + COALESCE(refund_value_eur, 0)), 2) AS total_claim_value_eur,',
@@ -765,6 +808,7 @@ function getOrderLookup(opts) {
     rawCustomerId: rawCustomerId,
     analyticalId: analyticalId,
     events: events.map(function (e) { e.talabat_reason = talabatReason; return e; }),
+    orderStats: orderStats,
     violations: { locationChange: locationChange, repeatOffender: repeat, fraudNetwork: network },
     thresholds: { minShiftMeters: 500, minDelaySeconds: 300, minClaims: 3, minLinkedFraud: 1 }
   };
@@ -866,8 +910,10 @@ function getLiveOrderTracker(opts) {
   var repeatWindowDays = 90;
   var repeat = { claimCount: 0, totalValueEur: 0, cancellationClaimCount: 0, windowDays: repeatWindowDays, violated: false };
   var network = { linkedFraudAccounts: 0, networkSize: null, isBlocked: false, isShieldFraud: false, isShieldVoucherFraud: false, isDeviceRooted: false, isAppCloned: false, found: false, violated: false };
+  var orderStats = { windowDays: repeatWindowDays, totalOrders: 0, successfulOrders: 0, cancelledOrders: 0, cancellationRatePct: 0 };
 
   if (rawCustomerNumeric) {
+    orderStats = getCustomerOrderStats_([rawCustomerId], repeatWindowDays);
     var claimsSql = [
       'SELECT COUNT(*) AS claim_count,',
       '  ROUND(SUM(COALESCE(compensation_value_eur, 0) + COALESCE(refund_value_eur, 0)), 2) AS total_claim_value_eur,',
@@ -910,6 +956,7 @@ function getLiveOrderTracker(opts) {
     order: order,
     rawCustomerId: rawCustomerId,
     analyticalId: analyticalId,
+    orderStats: orderStats,
     violations: { repeatOffender: repeat, fraudNetwork: network }
   };
 }
