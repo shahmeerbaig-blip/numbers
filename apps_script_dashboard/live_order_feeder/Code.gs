@@ -9,10 +9,12 @@
  * access to that dataset — that's the whole reason this is a separate
  * script calling a separate URL).
  *
- * Confirmed 2026-11-26: the Sheet's "500 QAR plus oders L12 hours" tab is
- * fed via a native Connected Sheet to BigQuery (a "Connected Sheet 1" tab
- * holds the raw connection), so refreshing it is just re-running Google's
- * own BigQuery data source — no need to re-implement the query here.
+ * Confirmed 2026-11-26: the Sheet's live-orders tab (name may change on the
+ * Sheet owner's side independently of this script - see LIVE_ORDERS_SHEET_TAB
+ * in the main dashboard's Code.gs) is fed via a native Connected Sheet to
+ * BigQuery (a "Connected Sheet 1" tab holds the raw connection), so
+ * refreshing it is just re-running Google's own BigQuery data source — no
+ * need to re-implement the query here.
  *
  * SETUP:
  *   1. Open the Google Sheet > Extensions > Apps Script. Paste this in.

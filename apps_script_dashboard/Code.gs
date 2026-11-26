@@ -60,7 +60,7 @@ var ORDER_SEARCH_DAYS = 365;
 // latest_order_status, latest_status_time. Column order is looked up by header
 // name, not position, so it survives the sheet owner reordering columns.
 var LIVE_ORDERS_SHEET_ID = '1K7QTDW_kA7cXkHyldAwG6mFl58df_7RmoSLDC63FBzQ';
-var LIVE_ORDERS_SHEET_TAB = '500 QAR plus oders L12 hours';
+var LIVE_ORDERS_SHEET_TAB = 'liveorders';
 // A colleague-deployed Web App ( Execute as: Me, see live_order_feeder/Code.gs )
 // that refreshes the sheet's BigQuery Connected Sheet data source on demand.
 // Leave LIVE_REFRESH_URL blank to just read the sheet as last refreshed instead
